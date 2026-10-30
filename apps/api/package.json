@@ -7,15 +7,25 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
-    "test": "echo \"api tests placeholder\"",
-    "dev": "echo \"api dev placeholder\"",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:seed": "tsx src/db/seed.ts",
+    "dev": "tsx watch src/index.ts",
     "e2e": "echo \"api e2e placeholder\""
   },
   "dependencies": {
-    "@eventora/shared": "workspace:*"
+    "@eventora/shared": "workspace:*",
+    "dotenv": "^18.0.9",
+    "drizzle-orm": "^0.45.4",
+    "pg": "^8.23.1"
   },
   "devDependencies": {
     "@types/node": "^20.14.10",
-    "typescript": "^5.5.4"
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.11",
+    "tsx": "^4.23.15",
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
   }
 }
