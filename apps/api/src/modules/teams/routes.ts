@@ -1,8 +1,8 @@
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { db } from '../../db/client';
-import { events } from '../../db/schema';
+import { events, teamMembers, teamRosterSnapshots, teams, users } from '../../db/schema';
 import { AppError } from '../../lib/app-error';
 import { requireEventOrganizer } from '../../middleware/rbac';
 import { requireAuth } from '../../plugins/auth';
@@ -134,6 +134,52 @@ export async function teamRoutes(server: FastifyInstance): Promise<void> {
         checkinClosedAt: updated.checkinClosedAt,
         ...lockResult,
       });
+    }
+  );
+
+  // 8. List all teams for an event (Organizer)
+  server.get(
+    '/events/:eventId/teams',
+    { preHandler: [requireAuth, requireEventOrganizer('eventId')] },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { eventId } = request.params as { eventId: string };
+      const teamsList = await db
+        .select()
+        .from(teams)
+        .where(eq(teams.eventId, eventId))
+        .orderBy(desc(teams.createdAt));
+
+      const result = [];
+      for (const t of teamsList) {
+        const members = await db
+          .select({
+            id: teamMembers.id,
+            userId: teamMembers.userId,
+            role: teamMembers.role,
+            joinedAt: teamMembers.joinedAt,
+            fullName: users.fullName,
+            email: users.email,
+            rollNumber: users.rollNumber,
+            department: users.department,
+          })
+          .from(teamMembers)
+          .innerJoin(users, eq(teamMembers.userId, users.id))
+          .where(eq(teamMembers.teamId, t.id));
+
+        const [snapshot] = await db
+          .select()
+          .from(teamRosterSnapshots)
+          .where(eq(teamRosterSnapshots.teamId, t.id))
+          .limit(1);
+
+        result.push({
+          ...t,
+          members,
+          snapshot: snapshot ? snapshot.roster : null,
+        });
+      }
+
+      return reply.status(200).send({ teams: result });
     }
   );
 }

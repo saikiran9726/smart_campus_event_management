@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import {
   ClubMemberRole,
@@ -309,17 +309,180 @@ export async function proposalRoutes(server: FastifyInstance): Promise<void> {
     }
   );
 
+  // 1.5. GET /public/faculty/preview (Zero login required via Magic Link Token)
+  server.get(
+    '/public/faculty/preview',
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const { token } = request.query as { token?: string };
+        if (!token) {
+          throw new AppError('VALIDATION_FAILED', 'Approval token is required.', 400);
+        }
+
+        // Verify token cryptographic signature, expiry, and JTI status without consuming
+        const tokenData = await verifyApprovalToken(token);
+
+        const [proposal] = await db
+          .select()
+          .from(eventProposals)
+          .where(eq(eventProposals.id, tokenData.proposalId))
+          .limit(1);
+
+        if (!proposal) {
+          throw new AppError('NOT_FOUND', 'Associated proposal not found.', 404);
+        }
+
+        const [club] = await db
+          .select({
+            id: clubs.id,
+            name: clubs.name,
+            slug: clubs.slug,
+            description: clubs.description,
+          })
+          .from(clubs)
+          .where(eq(clubs.id, proposal.clubId))
+          .limit(1);
+
+        let venue = null;
+        if (proposal.venueId) {
+          const [v] = await db
+            .select({
+              id: venues.id,
+              name: venues.name,
+              capacity: venues.capacity,
+              locationText: venues.locationText,
+              mapUrl: venues.mapUrl,
+            })
+            .from(venues)
+            .where(eq(venues.id, proposal.venueId))
+            .limit(1);
+          venue = v ?? null;
+        }
+
+        const avRequests = await db
+          .select({
+            avResourceId: proposalAvRequests.avResourceId,
+            quantity: proposalAvRequests.quantity,
+            name: avResources.name,
+            kind: avResources.kind,
+            totalQuantity: avResources.quantity,
+          })
+          .from(proposalAvRequests)
+          .innerJoin(avResources, eq(proposalAvRequests.avResourceId, avResources.id))
+          .where(eq(proposalAvRequests.proposalId, proposal.id));
+
+        const startIso = new Date(proposal.startAt).toISOString();
+        const endIso = new Date(proposal.endAt).toISOString();
+
+        // Conflict audit: check conflicting venue bookings
+        let conflictingVenueBookings: any[] = [];
+        if (proposal.venueId) {
+          conflictingVenueBookings = await db
+            .select({
+              bookingId: venueBookings.id,
+              status: venueBookings.status,
+              eventTitle: events.title,
+              proposalTitle: eventProposals.title,
+            })
+            .from(venueBookings)
+            .leftJoin(events, eq(venueBookings.eventId, events.id))
+            .leftJoin(eventProposals, eq(venueBookings.proposalId, eventProposals.id))
+            .where(
+              and(
+                eq(venueBookings.venueId, proposal.venueId),
+                sql`venue_bookings.during && tstzrange(${startIso}::timestamptz, ${endIso}::timestamptz, '[)')`,
+                sql`venue_bookings.status IN ('ACTIVE', 'PENDING_HOLD')`,
+                sql`(venue_bookings.proposal_id IS NULL OR venue_bookings.proposal_id != ${proposal.id})`
+              )
+            );
+        }
+
+        // Conflict audit: check AV requests
+        const conflictingAv: any[] = [];
+        for (const req of avRequests) {
+          const [eventSum] = await db
+            .select({ total: sql<number>`coalesce(sum(${eventAvBookings.quantity}), 0)` })
+            .from(eventAvBookings)
+            .where(
+              and(
+                eq(eventAvBookings.avResourceId, req.avResourceId),
+                sql`${eventAvBookings.during} && tstzrange(${startIso}::timestamptz, ${endIso}::timestamptz, '[)')`
+              )
+            );
+          const [propSum] = await db
+            .select({ total: sql<number>`coalesce(sum(${proposalAvRequests.quantity}), 0)` })
+            .from(proposalAvRequests)
+            .innerJoin(eventProposals, eq(proposalAvRequests.proposalId, eventProposals.id))
+            .innerJoin(venueBookings, eq(venueBookings.proposalId, eventProposals.id))
+            .where(
+              and(
+                eq(proposalAvRequests.avResourceId, req.avResourceId),
+                eq(eventProposals.status, ProposalStatus.PENDING),
+                ne(eventProposals.id, proposal.id),
+                sql`${venueBookings.during} && tstzrange(${startIso}::timestamptz, ${endIso}::timestamptz, '[)')`
+              )
+            );
+          const totalOtherReserved = Number(eventSum?.total ?? 0) + Number(propSum?.total ?? 0);
+          if (req.quantity + totalOtherReserved > req.totalQuantity) {
+            conflictingAv.push({
+              avResourceId: req.avResourceId,
+              name: req.name,
+              requested: req.quantity,
+              available: Math.max(0, req.totalQuantity - totalOtherReserved),
+            });
+          }
+        }
+
+        const hasConflicts = conflictingVenueBookings.length > 0 || conflictingAv.length > 0;
+
+        return reply.status(200).send({
+          proposal: {
+            id: proposal.id,
+            title: proposal.title,
+            description: proposal.description,
+            expectedAttendance: proposal.expectedAttendance,
+            startAt: startIso,
+            endAt: endIso,
+            status: proposal.status,
+            createdAt: new Date(proposal.createdAt).toISOString(),
+          },
+          club: club ?? { id: proposal.clubId, name: 'Campus Club', slug: 'campus-club' },
+          window: {
+            startAt: startIso,
+            endAt: endIso,
+          },
+          venue: venue ?? null,
+          avRequests,
+          conflictAudit: {
+            hasConflicts,
+            venueConflicts: conflictingVenueBookings.map((b) => ({
+              title: b.eventTitle || b.proposalTitle || 'Conflicting Booking',
+              status: b.status,
+            })),
+            avConflicts: conflictingAv,
+          },
+          tokenAction: tokenData.action,
+        });
+      } catch (err: any) {
+        if (err instanceof AppError) throw err;
+        console.error('SERVER ERROR IN GET /public/faculty/preview:', err);
+        throw err;
+      }
+    }
+  );
+
   // 2. Public Faculty Decision (Zero Login Required via Magic Link Token)
   server.post(
     '/public/faculty/decision',
     async (request: FastifyRequest, reply: FastifyReply) => {
-      const body = request.body as { token?: string };
+      const body = request.body as { token?: string; action?: 'APPROVE' | 'REJECT' };
       if (!body.token) {
         throw new AppError('VALIDATION_FAILED', 'Approval token is required.', 400);
       }
 
       // Verify token cryptographic signature, expiry, and JTI status
       const tokenData = await verifyApprovalToken(body.token);
+      const actionToTake = body.action || tokenData.action;
 
       const result = await withTx(async (tx) => {
         // Atomically consume JTI and invalidate sibling token
@@ -335,7 +498,7 @@ export async function proposalRoutes(server: FastifyInstance): Promise<void> {
           throw new AppError('NOT_FOUND', 'Associated proposal not found.', 404);
         }
 
-        if (tokenData.action === 'APPROVE') {
+        if (actionToTake === 'APPROVE') {
           // Update proposal status
           await tx
             .update(eventProposals)

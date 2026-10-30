@@ -19,6 +19,9 @@ export function getSocket(): Socket {
   return socketInstance;
 }
 
+export const socket: Socket = getSocket();
+
+
 export function connectSocket(token?: string | null): Socket {
   const socket = getSocket();
   if (token) {

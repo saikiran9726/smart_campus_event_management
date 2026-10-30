@@ -130,3 +130,6 @@ export {
   ToastClose,
   ToastAction,
 };
+
+export { toast, useToast } from './use-toast';
+

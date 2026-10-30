@@ -161,6 +161,13 @@ function toast({ ...props }: Toast) {
   };
 }
 
+toast.success = (title: string, description?: string) =>
+  toast({ title, description });
+toast.error = (title: string, description?: string) =>
+  toast({ title, description, variant: 'destructive' });
+toast.info = (title: string, description?: string) =>
+  toast({ title, description });
+
 function useToast() {
   const [state, setState] = React.useState<State>(memoryState);
 
