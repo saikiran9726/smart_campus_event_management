@@ -16,6 +16,10 @@ import { env } from './env';
 import { AppError } from './lib/app-error';
 import { meRoutes } from './modules/users/me';
 import { clerkWebhookRoutes } from './modules/webhooks/clerk';
+import { clubRoutes } from './modules/clubs/routes';
+import { uploadRoutes } from './modules/uploads/routes';
+import { proposalRoutes } from './modules/proposals/routes';
+import { eventRoutes } from './modules/events/routes';
 
 export function buildServer(opts: FastifyServerOptions = {}): FastifyInstance {
   const server = fastify({
@@ -154,6 +158,10 @@ export function buildServer(opts: FastifyServerOptions = {}): FastifyInstance {
   // Register core routes
   server.register(clerkWebhookRoutes);
   server.register(meRoutes);
+  server.register(clubRoutes);
+  server.register(uploadRoutes);
+  server.register(proposalRoutes);
+  server.register(eventRoutes);
 
   return server;
 }
