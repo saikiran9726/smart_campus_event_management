@@ -97,9 +97,8 @@ export const scannerSessions = pgTable('scanner_sessions', {
   passkeyId: uuid('passkey_id')
     .notNull()
     .references(() => scannerPasskeys.id, { onDelete: 'cascade' }),
-  userId: uuid('user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  volunteerName: text('volunteer_name'),
   startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
 });

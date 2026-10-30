@@ -24,6 +24,9 @@ import { formRoutes } from './modules/forms';
 import { registrationRoutes } from './modules/registrations';
 import { paymentRoutes } from './modules/payments';
 import { waitlistRoutes } from './modules/waitlist';
+import { ticketRoutes } from './modules/tickets';
+import { passkeyRoutes } from './modules/passkeys';
+import { gateRoutes } from './modules/gate';
 
 export function buildServer(opts: FastifyServerOptions = {}): FastifyInstance {
   const server = fastify({
@@ -92,6 +95,37 @@ export function buildServer(opts: FastifyServerOptions = {}): FastifyInstance {
   // Request ID hook
   server.addHook('onRequest', async (request, reply) => {
     reply.header('x-request-id', request.id);
+  });
+
+  // Least-privilege route guard: Scanner tokens MUST receive 403 on all non-scanner endpoints
+  server.addHook('onRequest', async (request, reply) => {
+    const authHeader = request.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.slice(7).trim();
+      try {
+        const parts = token.split('.');
+        if (parts.length === 3) {
+          const payloadJson = Buffer.from(parts[1]!, 'base64url').toString('utf8');
+          const parsed = JSON.parse(payloadJson);
+          if (parsed && parsed.kind === 'scanner') {
+            const urlPath = request.url.split('?')[0] || '';
+            const isAllowed =
+              urlPath.startsWith('/gate') ||
+              urlPath.startsWith('/scanner') ||
+              urlPath.startsWith('/public/scanner');
+            if (!isAllowed) {
+              throw new AppError(
+                'FORBIDDEN',
+                'Scanner tokens are restricted to gate endpoints.',
+                403
+              );
+            }
+          }
+        }
+      } catch (err) {
+        if (err instanceof AppError) throw err;
+      }
+    }
   });
 
   // Global Error Handler
@@ -170,6 +204,9 @@ export function buildServer(opts: FastifyServerOptions = {}): FastifyInstance {
   server.register(registrationRoutes);
   server.register(paymentRoutes);
   server.register(waitlistRoutes);
+  server.register(ticketRoutes);
+  server.register(passkeyRoutes);
+  server.register(gateRoutes);
 
   return server;
 }

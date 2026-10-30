@@ -36,6 +36,13 @@
       "when": 1793368400000,
       "tag": "0004_events_strikes_processed_at",
       "breakpoints": false
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793368500000,
+      "tag": "0005_scanner_sessions_volunteer",
+      "breakpoints": false
     }
   ]
 }

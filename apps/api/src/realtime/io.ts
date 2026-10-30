@@ -133,3 +133,13 @@ export function emitSeats(eventId: string, remaining: number): void {
     });
   }
 }
+
+/**
+ * Emits gate scan result event to room `event:{eventId}`
+ */
+export function emitScanResult(eventId: string, payload: any): void {
+  if (ioInstance) {
+    (ioInstance as any).to(`event:${eventId}`).emit('scan:result', payload);
+  }
+}
+

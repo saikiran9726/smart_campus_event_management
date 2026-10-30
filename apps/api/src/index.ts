@@ -16,6 +16,9 @@ export * from './modules/registrations';
 export * from './modules/payments';
 export * from './modules/waitlist';
 export * from './modules/strikes';
+export * from './modules/tickets';
+export * from './modules/passkeys';
+export * from './modules/gate';
 export * from './workers';
 export * from './server';
 

@@ -130,6 +130,26 @@ export async function authenticateRequest(
     return null;
   }
 
+  // Check if token is a scanner JWT: scanner tokens are NEVER allowed to act as user sessions
+  try {
+    const parts = token.split('.');
+    if (parts.length === 3) {
+      const payloadJson = Buffer.from(parts[1]!, 'base64url').toString('utf8');
+      const parsed = JSON.parse(payloadJson);
+      if (parsed && parsed.kind === 'scanner') {
+        throw new AppError(
+          'FORBIDDEN',
+          'Scanner tokens are restricted to gate endpoints.',
+          403
+        );
+      }
+    }
+  } catch (err) {
+    if (err instanceof AppError) {
+      throw err;
+    }
+  }
+
   try {
     const verified = await verifyToken(token, {
       secretKey: env.CLERK_SECRET_KEY,
