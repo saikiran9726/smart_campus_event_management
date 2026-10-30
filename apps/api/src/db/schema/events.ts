@@ -108,3 +108,18 @@ export const venueBookings = pgTable('venue_bookings', {
 
 export type VenueBooking = typeof venueBookings.$inferSelect;
 export type NewVenueBooking = typeof venueBookings.$inferInsert;
+
+export const eventResources = pgTable('event_resources', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  eventId: uuid('event_id')
+    .notNull()
+    .references(() => events.id, { onDelete: 'cascade' }),
+  title: text('title').notNull(),
+  kind: text('kind').notNull(), // SLIDES, REPO, ALBUM, OTHER
+  resourceKey: text('resource_key'),
+  url: text('url'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type EventResource = typeof eventResources.$inferSelect;
+export type NewEventResource = typeof eventResources.$inferInsert;

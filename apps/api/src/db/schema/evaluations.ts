@@ -46,6 +46,7 @@ export const reviews = pgTable(
     stars: smallint('stars').notNull(),
     comment: text('comment').notNull(),
     verified: boolean('verified').notNull().default(true),
+    showName: boolean('show_name').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -57,19 +58,25 @@ export const reviews = pgTable(
 export type Review = typeof reviews.$inferSelect;
 export type NewReview = typeof reviews.$inferInsert;
 
-export const odLetters = pgTable('od_letters', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  eventId: uuid('event_id')
-    .notNull()
-    .references(() => events.id, { onDelete: 'cascade' }),
-  userId: uuid('user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  serial: text('serial').notNull().unique(),
-  issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
-  signature: text('signature').notNull(),
-  pdfKey: text('pdf_key'),
-});
+export const odLetters = pgTable(
+  'od_letters',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => events.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    serial: text('serial').notNull().unique(),
+    issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
+    signature: text('signature').notNull(),
+    pdfKey: text('pdf_key'),
+  },
+  (table) => [
+    uniqueIndex('od_letters_event_user_idx').on(table.eventId, table.userId),
+  ]
+);
 
 export type OdLetter = typeof odLetters.$inferSelect;
 export type NewOdLetter = typeof odLetters.$inferInsert;

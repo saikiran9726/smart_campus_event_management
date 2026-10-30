@@ -9,7 +9,10 @@ export const budgetAllocations = pgTable('budget_allocations', {
     .notNull()
     .references(() => clubs.id, { onDelete: 'cascade' }),
   eventId: uuid('event_id').references(() => events.id, { onDelete: 'set null' }),
+  title: text('title').notNull().default('General Allocation'),
+  category: text('category').notNull().default('GENERAL'),
   allocatedPaise: integer('allocated_paise').notNull(),
+  spentPaise: integer('spent_paise').notNull().default(0),
   note: text('note'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

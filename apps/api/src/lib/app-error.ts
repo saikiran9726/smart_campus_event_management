@@ -23,6 +23,8 @@ export const ERROR_CODE_TO_HTTP_STATUS: Record<AppErrorCode, number> = {
   ROSTER_LOCKED: 409,
   DEADLINE_PASSED: 403,
   TEAM_FULL_WAITLISTED: 409,
+  NOT_CHECKED_IN: 403,
+  OVER_BUDGET: 422,
 };
 
 export class AppError extends Error {

@@ -23,6 +23,8 @@ export const APP_ERROR_CODES = [
   'ROSTER_LOCKED',
   'DEADLINE_PASSED',
   'TEAM_FULL_WAITLISTED',
+  'NOT_CHECKED_IN',
+  'OVER_BUDGET',
 ] as const;
 
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number];

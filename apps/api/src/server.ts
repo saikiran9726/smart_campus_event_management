@@ -34,6 +34,10 @@ import { teamRoutes } from './modules/teams';
 import { submissionRoutes } from './modules/submissions';
 import { teammatePoolRoutes } from './modules/teammates';
 import { winnerRoutes } from './modules/winners';
+import { odRoutes } from './modules/od';
+import { reviewRoutes } from './modules/reviews';
+import { verifyRoutes } from './modules/verify';
+import { budgetRoutes } from './modules/budget';
 
 export function buildServer(opts: FastifyServerOptions = {}): FastifyInstance {
   const server = fastify({
@@ -221,6 +225,10 @@ export function buildServer(opts: FastifyServerOptions = {}): FastifyInstance {
   server.register(submissionRoutes);
   server.register(teammatePoolRoutes);
   server.register(winnerRoutes);
+  server.register(odRoutes);
+  server.register(reviewRoutes);
+  server.register(verifyRoutes);
+  server.register(budgetRoutes);
 
   return server;
 }
