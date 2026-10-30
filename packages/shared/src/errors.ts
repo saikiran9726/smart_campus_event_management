@@ -21,6 +21,8 @@ export const APP_ERROR_CODES = [
   'TEAM_FULL',
   'TEAM_MIN_NOT_MET',
   'ROSTER_LOCKED',
+  'DEADLINE_PASSED',
+  'TEAM_FULL_WAITLISTED',
 ] as const;
 
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number];

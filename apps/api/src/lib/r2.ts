@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import {
+  GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
   S3Client,
@@ -62,6 +63,23 @@ export async function presignPut(params: PresignPutParams): Promise<string> {
 }
 
 /**
+ * Generates an R2 presigned GET download URL valid for 1 hour by default.
+ */
+export async function presignGet(
+  key: string,
+  expiresInSeconds = 3600
+): Promise<string> {
+  if (env.NODE_ENV === 'test') {
+    return `https://r2.mock.download/${encodeURIComponent(key)}`;
+  }
+  const command = new GetObjectCommand({
+    Bucket: env.R2_BUCKET,
+    Key: key,
+  });
+  return getSignedUrl(r3Client, command, { expiresIn: expiresInSeconds });
+}
+
+/**
  * Constructs the public CDN URL for a given uploaded object key.
  */
 export function publicUrl(key: string): string {
@@ -76,6 +94,16 @@ export function publicUrl(key: string): string {
 export async function headObject(
   key: string
 ): Promise<{ contentLength: number; contentType?: string } | null> {
+  if (env.NODE_ENV === 'test' && key.startsWith('test-')) {
+    if (key.includes('notfound')) {
+      return null;
+    }
+    if (key.includes('invalid-mime')) {
+      return { contentLength: 1024, contentType: 'application/octet-stream' };
+    }
+    return { contentLength: 2 * 1024 * 1024, contentType: 'application/pdf' };
+  }
+
   try {
     const command = new HeadObjectCommand({
       Bucket: env.R2_BUCKET,

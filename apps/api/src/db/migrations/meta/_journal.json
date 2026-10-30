@@ -57,6 +57,13 @@
       "when": 1793368700000,
       "tag": "0007_messages_deleted_at_and_cursor_idx",
       "breakpoints": false
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793368800000,
+      "tag": "0008_hackathon_teams_and_snapshots",
+      "breakpoints": false
     }
   ]
 }

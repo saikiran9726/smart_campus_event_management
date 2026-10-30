@@ -19,8 +19,10 @@ export const ERROR_CODE_TO_HTTP_STATUS: Record<AppErrorCode, number> = {
   RATE_LIMITED: 429,
   PAYMENT_FAILED: 402,
   TEAM_FULL: 409,
-  TEAM_MIN_NOT_MET: 400,
+  TEAM_MIN_NOT_MET: 422,
   ROSTER_LOCKED: 409,
+  DEADLINE_PASSED: 403,
+  TEAM_FULL_WAITLISTED: 409,
 };
 
 export class AppError extends Error {

@@ -30,6 +30,10 @@ import { gateRoutes } from './modules/gate';
 import { commsAdminRoutes } from './modules/comms/routes';
 import { channelRoutes } from './modules/channels';
 import { doubtRoutes } from './modules/doubts';
+import { teamRoutes } from './modules/teams';
+import { submissionRoutes } from './modules/submissions';
+import { teammatePoolRoutes } from './modules/teammates';
+import { winnerRoutes } from './modules/winners';
 
 export function buildServer(opts: FastifyServerOptions = {}): FastifyInstance {
   const server = fastify({
@@ -213,6 +217,10 @@ export function buildServer(opts: FastifyServerOptions = {}): FastifyInstance {
   server.register(commsAdminRoutes);
   server.register(channelRoutes);
   server.register(doubtRoutes);
+  server.register(teamRoutes);
+  server.register(submissionRoutes);
+  server.register(teammatePoolRoutes);
+  server.register(winnerRoutes);
 
   return server;
 }

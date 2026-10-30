@@ -54,6 +54,7 @@ export const events = pgTable(
     maxTeamSize: integer('max_team_size'),
     formFrozenAt: timestamp('form_frozen_at', { withTimezone: true }),
     checkinClosedAt: timestamp('checkin_closed_at', { withTimezone: true }),
+    submissionDeadlineAt: timestamp('submission_deadline_at', { withTimezone: true }),
     strikesProcessedAt: timestamp('strikes_processed_at', { withTimezone: true }),
     createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',
