@@ -11,6 +11,7 @@ import {
 import { db } from '../db/client';
 import { users } from '../db/schema';
 import { env } from '../env';
+import { registerChatHandlers } from './handlers/chat';
 
 let ioInstance: Server<
   ClientToServerEvents,
@@ -97,13 +98,8 @@ export function initIO(
       socket.join(`user:${userId}`);
     }
 
-    socket.on('join:channel', ({ channelId }) => {
-      socket.join(`channel:${channelId}`);
-    });
-
-    socket.on('leave:channel', ({ channelId }) => {
-      socket.leave(`channel:${channelId}`);
-    });
+    // Register all chat handlers (join verification, message, typing throttling, read receipts)
+    registerChatHandlers(io, socket);
   });
 
   ioInstance = io;

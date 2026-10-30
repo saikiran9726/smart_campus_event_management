@@ -7,6 +7,7 @@ import { AppError } from '../../lib/app-error';
 import { requireClubRole, requireEventOrganizer } from '../../middleware/rbac';
 import { requireAuth } from '../../plugins/auth';
 import { emitSeats } from '../../realtime/io';
+import { ensureEventDoubtRoom, postEventCardToFeed } from '../channels/event-feed';
 
 export function computeSeatLabel(remainingCapacity: number, waitlistCount = 0): string {
   if (remainingCapacity > 0) {
@@ -128,6 +129,8 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
       }
 
       emitSeats(published.id, published.remainingCapacity);
+      await ensureEventDoubtRoom(published.id);
+      await postEventCardToFeed(published.id, 'PUBLISHED');
 
       return reply.status(200).send({ event: published });
     }
@@ -183,6 +186,9 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
       }
 
       emitSeats(updated.id, updated.remainingCapacity);
+      if (body.startAt !== undefined) {
+        await postEventCardToFeed(updated.id, 'RESCHEDULED');
+      }
 
       return reply.status(200).send({ event: updated });
     }
@@ -209,6 +215,7 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
       }
 
       emitSeats(cancelled.id, 0);
+      await postEventCardToFeed(cancelled.id, 'CANCELLED');
 
       return reply.status(200).send({ success: true, event: cancelled });
     }

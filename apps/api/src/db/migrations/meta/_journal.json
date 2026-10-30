@@ -50,6 +50,13 @@
       "when": 1793368600000,
       "tag": "0006_comms_reminders_and_event_notes",
       "breakpoints": false
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793368700000,
+      "tag": "0007_messages_deleted_at_and_cursor_idx",
+      "breakpoints": false
     }
   ]
 }

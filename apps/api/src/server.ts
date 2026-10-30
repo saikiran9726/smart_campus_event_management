@@ -28,6 +28,8 @@ import { ticketRoutes } from './modules/tickets';
 import { passkeyRoutes } from './modules/passkeys';
 import { gateRoutes } from './modules/gate';
 import { commsAdminRoutes } from './modules/comms/routes';
+import { channelRoutes } from './modules/channels';
+import { doubtRoutes } from './modules/doubts';
 
 export function buildServer(opts: FastifyServerOptions = {}): FastifyInstance {
   const server = fastify({
@@ -209,6 +211,8 @@ export function buildServer(opts: FastifyServerOptions = {}): FastifyInstance {
   server.register(passkeyRoutes);
   server.register(gateRoutes);
   server.register(commsAdminRoutes);
+  server.register(channelRoutes);
+  server.register(doubtRoutes);
 
   return server;
 }

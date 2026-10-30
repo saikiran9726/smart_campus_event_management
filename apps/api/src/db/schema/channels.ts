@@ -27,6 +27,7 @@ export const clubChannels = pgTable(
   },
   (table) => [
     uniqueIndex('club_channels_club_slug_idx').on(table.clubId, table.slug),
+    uniqueIndex('club_channels_event_slug_idx').on(table.eventId, table.slug),
     check(
       'club_channels_exactly_one_parent',
       sql`(${table.clubId} IS NOT NULL AND ${table.eventId} IS NULL) OR (${table.clubId} IS NULL AND ${table.eventId} IS NOT NULL)`
@@ -51,9 +52,15 @@ export const messages = pgTable(
     replyToId: uuid('reply_to_id'),
     pinnedAt: timestamp('pinned_at', { withTimezone: true }),
     authorRoleBadge: text('author_role_badge'),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
+    index('messages_channel_cursor_idx').on(
+      table.channelId,
+      table.createdAt.desc(),
+      table.id.desc()
+    ),
     index('messages_channel_created_desc_idx').on(
       table.channelId,
       table.createdAt.desc()
