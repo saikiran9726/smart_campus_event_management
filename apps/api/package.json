@@ -1,0 +1,21 @@
+{
+  "name": "@eventora/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "test": "echo \"api tests placeholder\"",
+    "dev": "echo \"api dev placeholder\"",
+    "e2e": "echo \"api e2e placeholder\""
+  },
+  "dependencies": {
+    "@eventora/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "typescript": "^5.5.4"
+  }
+}

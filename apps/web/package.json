@@ -1,0 +1,27 @@
+{
+  "name": "@eventora/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "test": "echo \"web tests placeholder\"",
+    "dev": "vite",
+    "preview": "vite preview",
+    "e2e": "echo \"web e2e placeholder\""
+  },
+  "dependencies": {
+    "@eventora/shared": "workspace:*",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.1"
+  }
+}
