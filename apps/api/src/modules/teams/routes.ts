@@ -22,7 +22,10 @@ const createTeamBodySchema = z.object({
 });
 
 const joinTeamBodySchema = z.object({
-  code: z.string().min(1).max(20),
+  code: z.string().min(1).max(20).optional(),
+  inviteCode: z.string().min(1).max(20).optional(),
+}).refine((data) => Boolean(data.code || data.inviteCode), {
+  message: 'Team code is required.',
 });
 
 export async function teamRoutes(server: FastifyInstance): Promise<void> {
@@ -58,7 +61,8 @@ export async function teamRoutes(server: FastifyInstance): Promise<void> {
         throw new AppError('VALIDATION_FAILED', 'Team code is required.', 400);
       }
 
-      const result = await joinTeamByCode(request.user!.id, parsed.data.code);
+      const code = (parsed.data.code || parsed.data.inviteCode)!;
+      const result = await joinTeamByCode(request.user!.id, code);
       return reply.status(200).send(result);
     }
   );
@@ -147,13 +151,12 @@ export async function teamRoutes(server: FastifyInstance): Promise<void> {
         .select()
         .from(teams)
         .where(eq(teams.eventId, eventId))
-        .orderBy(desc(teams.createdAt));
+        .orderBy(desc(teams.name));
 
       const result = [];
       for (const t of teamsList) {
         const members = await db
           .select({
-            id: teamMembers.id,
             userId: teamMembers.userId,
             role: teamMembers.role,
             joinedAt: teamMembers.joinedAt,
@@ -175,7 +178,7 @@ export async function teamRoutes(server: FastifyInstance): Promise<void> {
         result.push({
           ...t,
           members,
-          snapshot: snapshot ? snapshot.roster : null,
+          snapshot: snapshot ? snapshot.snapshot : null,
         });
       }
 

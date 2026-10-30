@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { Readable } from 'node:stream';
 import { UserRole } from '@eventora/shared';
@@ -35,6 +35,39 @@ export async function odRoutes(app: FastifyInstance): Promise<void> {
         downloadUrl: result.downloadUrl,
         alreadyGenerated: result.alreadyGenerated,
       });
+    }
+  );
+
+  // 1b. Stream OD letter PDF by eventId (current user)
+  app.get(
+    '/events/:eventId/od/download',
+    {
+      preHandler: [requireAuth],
+      schema: {
+        params: z.object({
+          eventId: z.string().uuid(),
+        }),
+      },
+    },
+    async (request, reply) => {
+      const { eventId } = request.params as { eventId: string };
+      const userId = request.user!.id;
+
+      const [od] = await db
+        .select()
+        .from(odLetters)
+        .where(and(eq(odLetters.eventId, eventId), eq(odLetters.userId, userId)))
+        .limit(1);
+
+      if (!od) {
+        throw new AppError('NOT_FOUND', 'On-Duty letter not found for this event.', 404);
+      }
+
+      const { buffer, serial } = await getOrRenderOdPdf(od.id);
+
+      reply.header('Content-Type', 'application/pdf');
+      reply.header('Content-Disposition', `inline; filename="OD-Letter-${serial}.pdf"`);
+      return reply.send(buffer);
     }
   );
 

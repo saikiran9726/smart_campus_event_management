@@ -135,6 +135,13 @@ export async function apiFetch<T = unknown>(
         // ignore
       }
     }
+
+    if (!token) {
+      const scannerToken = sessionStorage.getItem('eventora_scanner_token');
+      if (scannerToken) {
+        token = scannerToken;
+      }
+    }
   }
 
   const url = endpoint.startsWith('http')
@@ -142,6 +149,13 @@ export async function apiFetch<T = unknown>(
     : `${env.VITE_API_URL}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
 
   const headers = new Headers(customHeaders);
+  const testUserId =
+    typeof window !== 'undefined'
+      ? sessionStorage.getItem('eventora_test_user_id') || localStorage.getItem('eventora_test_user_id')
+      : null;
+  if (testUserId) {
+    headers.set('x-test-user-id', testUserId);
+  }
   if (!headers.has('Content-Type') && !(fetchInit.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
   }

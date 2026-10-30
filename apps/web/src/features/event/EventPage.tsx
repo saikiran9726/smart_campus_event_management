@@ -49,6 +49,7 @@ export interface EventDetailData {
   pricePaise: number;
   capacity: number;
   seatsRemaining: number;
+  remainingCapacity?: number;
   isCompetition?: boolean;
   minTeamSize?: number;
   maxTeamSize?: number;
@@ -174,7 +175,7 @@ Build production-grade autonomous agent systems, multi-agent workflows, and veri
 
   // Real-time socket seats hook
   const socketSeats = useSeats(event?.id);
-  const remainingSeats = socketSeats.remaining ?? event?.seatsRemaining ?? 15;
+  const remainingSeats = socketSeats.remaining ?? event?.remainingCapacity ?? event?.seatsRemaining ?? 0;
   const capacity = socketSeats.capacity ?? event?.capacity ?? 100;
   const isSoldOut = remainingSeats <= 0;
 

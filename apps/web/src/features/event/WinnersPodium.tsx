@@ -93,7 +93,7 @@ export const WinnersPodium: React.FC<WinnersPodiumProps> = ({ winners, className
 
           {/* Member tags */}
           <div className="flex flex-wrap gap-1.5 pt-1">
-            {winner.members.map((m, idx) => (
+            {(winner.members || []).map((m, idx) => (
               <span
                 key={idx}
                 className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-muted text-foreground"

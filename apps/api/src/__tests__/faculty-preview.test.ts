@@ -240,7 +240,7 @@ describe('Faculty Preview & Magic Link Decision API', () => {
       .select()
       .from(eventProposals)
       .where(eq(eventProposals.id, pendingProposal.id));
-    expect(updated.status).toBe(ProposalStatus.APPROVED);
+    expect(updated?.status).toBe(ProposalStatus.APPROVED);
   });
 
   it('subsequent GET /public/faculty/preview returns 409 TOKEN_USED once consumed', async () => {

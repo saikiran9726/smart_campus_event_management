@@ -9,8 +9,7 @@
     "lint": "tsc --noEmit",
     "test": "vitest run",
     "dev": "vite",
-    "preview": "vite preview",
-    "e2e": "echo \"web e2e placeholder\""
+    "preview": "vite preview"
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.61.3",
@@ -37,6 +36,7 @@
     "@tanstack/react-virtual": "^3.14.24",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "jsqr": "^1.4.0",
     "lucide-react": "^1.65.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

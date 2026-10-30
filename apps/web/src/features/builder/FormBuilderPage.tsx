@@ -175,6 +175,7 @@ function SortableQuestionCard({
               {isQuestionLocked ? (
                 <Badge
                   variant="outline"
+                  data-testid="question-locked-icon"
                   className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-800 flex items-center gap-1 text-[11px]"
                 >
                   <Lock className="h-3 w-3" />

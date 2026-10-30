@@ -208,6 +208,11 @@ export async function formRoutes(server: FastifyInstance): Promise<void> {
         throw new AppError('NOT_FOUND', `Event '${eventId}' was not found.`, 404);
       }
 
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(qid);
+      if (!isUuid) {
+        throw new AppError('NOT_FOUND', `Question '${qid}' was not found.`, 404);
+      }
+
       const [question] = await db
         .select()
         .from(formQuestions)
@@ -315,6 +320,11 @@ export async function formRoutes(server: FastifyInstance): Promise<void> {
 
       if (!event) {
         throw new AppError('NOT_FOUND', `Event '${eventId}' was not found.`, 404);
+      }
+
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(qid);
+      if (!isUuid) {
+        throw new AppError('NOT_FOUND', `Question '${qid}' was not found.`, 404);
       }
 
       const [question] = await db

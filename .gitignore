@@ -24,6 +24,9 @@ pnpm-debug.log*
 # Coverage
 coverage/
 .nyc_output/
+test-results/
+playwright-report/
+blob-report/
 
 # OS metadata
 .DS_Store

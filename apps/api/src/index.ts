@@ -23,7 +23,7 @@ export * from './modules/comms';
 export * from './workers';
 export * from './server';
 
-async function start(): Promise<void> {
+export async function start(): Promise<void> {
   const server = buildServer();
 
   // Initialize Socket.IO attached to Fastify's HTTP server
@@ -57,8 +57,8 @@ async function start(): Promise<void> {
   }
 }
 
-// Automatically start server in non-test runtime
-if (env.NODE_ENV !== 'test') {
+// Automatically start server in non-test runtime or when explicitly requested
+if (env.NODE_ENV !== 'test' || process.env.START_SERVER === 'true') {
   start();
 }
 

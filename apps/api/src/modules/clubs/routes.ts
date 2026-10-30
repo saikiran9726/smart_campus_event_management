@@ -142,7 +142,7 @@ export async function clubRoutes(server: FastifyInstance): Promise<void> {
       .orderBy(desc(clubs.createdAt))
       .limit(limit);
 
-    return reply.status(200).send({ items });
+    return reply.status(200).send({ items, clubs: items });
   });
 
   // 3. Get Club by Slug

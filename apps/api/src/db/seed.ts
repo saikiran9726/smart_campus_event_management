@@ -1,4 +1,5 @@
 import { fileURLToPath } from 'node:url';
+import { eq } from 'drizzle-orm';
 import {
   ChannelKind,
   ClubMemberRole,
@@ -84,10 +85,18 @@ export async function runSeed(): Promise<void> {
     .onConflictDoNothing({ target: users.email })
     .returning();
 
-  const adminId = adminUser?.id;
-  const facultyId = facultyAdvisor?.id;
-  const organizerId = organizerUser?.id;
-  const studentId = studentUser?.id;
+  const adminId =
+    adminUser?.id ??
+    (await db.select({ id: users.id }).from(users).where(eq(users.email, 'admin@eventora.campus.edu')))[0]?.id;
+  const facultyId =
+    facultyAdvisor?.id ??
+    (await db.select({ id: users.id }).from(users).where(eq(users.email, 'dr.sharma@eventora.campus.edu')))[0]?.id;
+  const organizerId =
+    organizerUser?.id ??
+    (await db.select({ id: users.id }).from(users).where(eq(users.email, 'priya.patel@eventora.campus.edu')))[0]?.id;
+  const studentId =
+    studentUser?.id ??
+    (await db.select({ id: users.id }).from(users).where(eq(users.email, 'arjun.mehta@eventora.campus.edu')))[0]?.id;
 
   // 2. Seed Venues
   const [auditorium] = await db
@@ -111,6 +120,13 @@ export async function runSeed(): Promise<void> {
     })
     .onConflictDoNothing({ target: venues.name })
     .returning();
+
+  const auditoriumId =
+    auditorium?.id ??
+    (await db.select({ id: venues.id }).from(venues).where(eq(venues.name, 'Main Campus Auditorium')))[0]?.id;
+  const seminarHallId =
+    seminarHall?.id ??
+    (await db.select({ id: venues.id }).from(venues).where(eq(venues.name, 'Seminar Hall 1')))[0]?.id;
 
   await db
     .insert(venues)
@@ -190,19 +206,23 @@ export async function runSeed(): Promise<void> {
       .returning();
 
     // 5. Seed Club Members
-    if (codingClub) {
+    const codingClubRecord =
+      codingClub ??
+      (await db.select().from(clubs).where(eq(clubs.slug, 'codechef-devs')))[0];
+
+    if (codingClubRecord) {
       await db
         .insert(clubMembers)
         .values([
           {
-            clubId: codingClub.id,
+            clubId: codingClubRecord.id,
             userId: organizerId,
             role: ClubMemberRole.OWNER,
           },
           ...(studentId
             ? [
                 {
-                  clubId: codingClub.id,
+                  clubId: codingClubRecord.id,
                   userId: studentId,
                   role: ClubMemberRole.MEMBER,
                 },
@@ -216,13 +236,13 @@ export async function runSeed(): Promise<void> {
         .insert(clubChannels)
         .values([
           {
-            clubId: codingClub.id,
+            clubId: codingClubRecord.id,
             kind: ChannelKind.ANNOUNCEMENTS,
             name: 'Club Announcements',
             slug: 'announcements',
           },
           {
-            clubId: codingClub.id,
+            clubId: codingClubRecord.id,
             kind: ChannelKind.GENERAL,
             name: 'General Discussion',
             slug: 'general',
@@ -240,13 +260,13 @@ export async function runSeed(): Promise<void> {
       const [proposal] = await db
         .insert(eventProposals)
         .values({
-          clubId: codingClub.id,
+          clubId: codingClubRecord.id,
           proposedBy: organizerId,
           title: 'HackCampus 2026: 24-Hour National Hackathon',
           description:
             'A 24-hour inter-collegiate coding challenge focusing on AI systems, web platforms, and mobile apps.',
           expectedAttendance: 400,
-          venueId: auditorium?.id,
+          venueId: auditoriumId,
           startAt: startTime,
           endAt: endTime,
           status: ProposalStatus.APPROVED,
@@ -254,19 +274,20 @@ export async function runSeed(): Promise<void> {
           decidedAt: now,
           decisionNote: 'Approved. Ensure proper security and catering arrangements.',
         })
+        .onConflictDoNothing()
         .returning();
 
       const [hackathonEvent] = await db
         .insert(events)
         .values({
-          clubId: codingClub.id,
+          clubId: codingClubRecord.id,
           proposalId: proposal?.id,
           title: 'HackCampus 2026: 24-Hour National Hackathon',
           slug: 'hackcampus-2026',
           category: 'Hackathon',
           description:
             'Join hundreds of student developers, designers, and engineers for 24 hours of innovation and building. Categories include Generative AI, Campus Systems, and Sustainable Tech.',
-          venueId: auditorium?.id,
+          venueId: auditoriumId,
           startAt: startTime,
           endAt: endTime,
           registrationOpensAt: regOpen,
@@ -284,13 +305,17 @@ export async function runSeed(): Promise<void> {
         .onConflictDoNothing({ target: events.slug })
         .returning();
 
-      if (hackathonEvent) {
+      const hackathonEventRecord =
+        hackathonEvent ??
+        (await db.select().from(events).where(eq(events.slug, 'hackcampus-2026')))[0];
+
+      if (hackathonEventRecord) {
         // Seed Form Questions
         await db
           .insert(formQuestions)
           .values([
             {
-              eventId: hackathonEvent.id,
+              eventId: hackathonEventRecord.id,
               position: 1,
               type: QuestionType.SHORT_TEXT,
               label: 'GitHub Profile or Portfolio URL',
@@ -299,7 +324,7 @@ export async function runSeed(): Promise<void> {
               validation: { minLength: 5, maxLength: 255 },
             },
             {
-              eventId: hackathonEvent.id,
+              eventId: hackathonEventRecord.id,
               position: 2,
               type: QuestionType.MULTI_SELECT,
               label: 'Preferred Technology Stacks',
@@ -313,7 +338,7 @@ export async function runSeed(): Promise<void> {
               validation: { minSelect: 1, maxSelect: 3 },
             },
             {
-              eventId: hackathonEvent.id,
+              eventId: hackathonEventRecord.id,
               position: 3,
               type: QuestionType.FILE_UPLOAD,
               label: 'Resume (PDF format)',
@@ -331,13 +356,13 @@ export async function runSeed(): Promise<void> {
           .insert(clubChannels)
           .values([
             {
-              eventId: hackathonEvent.id,
+              eventId: hackathonEventRecord.id,
               kind: ChannelKind.EVENTS,
               name: 'HackCampus General',
               slug: 'hackcampus-general',
             },
             {
-              eventId: hackathonEvent.id,
+              eventId: hackathonEventRecord.id,
               kind: ChannelKind.DOUBT,
               name: 'Help & Mentorship Q&A',
               slug: 'hackcampus-help',
@@ -349,8 +374,8 @@ export async function runSeed(): Promise<void> {
         const [allocation] = await db
           .insert(budgetAllocations)
           .values({
-            clubId: codingClub.id,
-            eventId: hackathonEvent.id,
+            clubId: codingClubRecord.id,
+            eventId: hackathonEventRecord.id,
             allocatedPaise: 15000000, // Rs. 1,50,000
             note: 'Budget approved by Student Affairs for HackCampus 2026',
           })

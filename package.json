@@ -8,9 +8,10 @@
     "lint": "pnpm -r run lint",
     "typecheck": "pnpm -r run typecheck",
     "dev": "pnpm -r --parallel run dev",
-    "e2e": "pnpm -r run e2e"
+    "e2e": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "typescript": "^5.5.4"
   }
 }

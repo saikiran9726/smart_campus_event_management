@@ -12,11 +12,13 @@ const VerifyCertPage = lazy(() => import('@/features/verify/VerifyCertPage'));
 const VerifyOdPage = lazy(() => import('@/features/verify/VerifyOdPage'));
 const FacultyDecisionPage = lazy(() => import('@/features/faculty/FacultyDecisionPage'));
 const FacultyDashboardPage = lazy(() => import('@/features/faculty/FacultyDashboardPage'));
-const ScannerUnlockPage = lazy(() => import('@/routes/scanner-unlock'));
+const ScannerUnlockPage = lazy(() => import('@/features/scanner/ScannerUnlockPage'));
+const ScannerPage = lazy(() => import('@/features/scanner/ScannerPage'));
 const WaitlistClaimPage = lazy(() => import('@/features/claim/ClaimOfferPage'));
 
 const PassportPage = lazy(() => import('@/features/passport/PassportPage'));
-const CommunityPage = lazy(() => import('@/routes/community'));
+const CommunityPage = lazy(() => import('@/features/community/CommunityPage'));
+const EventDoubtRoomPage = lazy(() => import('@/features/community/EventDoubtRoomPage'));
 const OrganizerDashboard = lazy(() => import('@/features/organizer/OrganizerDashboard'));
 const EventEditorPage = lazy(() => import('@/features/organizer/EventEditorPage'));
 const FormBuilderPage = lazy(() => import('@/features/builder/FormBuilderPage'));
@@ -51,10 +53,12 @@ export const AppRoutes: React.FC = () => {
           {/* Public Routes */}
           <Route path="/" element={<DiscoverPage />} />
           <Route path="/events/:slug" element={<EventDetailPage />} />
+          <Route path="/events/:slug/doubts" element={<EventDoubtRoomPage />} />
           <Route path="/verify/cert/:id" element={<VerifyCertPage />} />
           <Route path="/verify/od/:serial" element={<VerifyOdPage />} />
           <Route path="/faculty/decision" element={<FacultyDecisionPage />} />
           <Route path="/scanner/unlock" element={<ScannerUnlockPage />} />
+          <Route path="/scanner" element={<ScannerPage />} />
           <Route path="/claim/:registrationId" element={<WaitlistClaimPage />} />
 
           {/* Authed Student & General Routes */}

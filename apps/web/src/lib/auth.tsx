@@ -43,12 +43,25 @@ export interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const isClerkKeyValid =
+  Boolean(env.VITE_CLERK_PUBLISHABLE_KEY) &&
+  !env.VITE_CLERK_PUBLISHABLE_KEY.includes('dummy') &&
+  !env.VITE_CLERK_PUBLISHABLE_KEY.includes('placeholder') &&
+  (env.VITE_CLERK_PUBLISHABLE_KEY.startsWith('pk_test_') || env.VITE_CLERK_PUBLISHABLE_KEY.startsWith('pk_live_'));
+
+export const ClerkAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isLoaded: isClerkLoaded, isSignedIn, user: clerkUser } = useClerkUser();
-  const { getToken, signOut } = useClerkAuth();
+  const { getToken, signOut: clerkSignOut } = useClerkAuth();
+
+  const testUserId =
+    typeof window !== 'undefined'
+      ? sessionStorage.getItem('eventora_test_user_id') || localStorage.getItem('eventora_test_user_id')
+      : null;
+  const effectiveIsSignedIn = Boolean(isSignedIn || testUserId);
 
   useEffect(() => {
     setAuthTokenGetter(async () => {
+      if (testUserId) return 'test-token';
       if (!isSignedIn) return null;
       try {
         return await getToken();
@@ -56,28 +69,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return null;
       }
     });
-  }, [isSignedIn, getToken]);
+  }, [isSignedIn, getToken, testUserId]);
 
   const {
     data: dbUserData,
     isLoading: isDbUserLoading,
     refetch: refetchUser,
   } = useQuery({
-    queryKey: ['me'],
+    queryKey: ['me', testUserId],
     queryFn: async () => {
       const res = await api.get<{ user: DbUser }>('/me', { showToast: false });
       return res.user;
     },
-    enabled: !!isSignedIn,
+    enabled: effectiveIsSignedIn,
     staleTime: 1000 * 60 * 5,
   });
 
   const user = dbUserData || null;
-  const isLoaded = isClerkLoaded && (!isSignedIn || !isDbUserLoading);
+  const isLoaded = (isClerkLoaded || Boolean(testUserId)) && (!effectiveIsSignedIn || !isDbUserLoading);
 
   const isAdmin = user?.role === 'ADMIN';
   const isFaculty = user?.role === 'FACULTY' || isAdmin;
   const isClubOrganizer = user?.role === 'ORGANIZER' || isFaculty || isAdmin;
+
+  const signOut = async () => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('eventora_test_user_id');
+      localStorage.removeItem('eventora_test_user_id');
+    }
+    await clerkSignOut();
+  };
 
   const hasRole = (roles: string | string[]): boolean => {
     if (!user) return false;
@@ -90,7 +111,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const value = useMemo(
     () => ({
       isLoaded,
-      isSignedIn: !!isSignedIn,
+      isSignedIn: effectiveIsSignedIn,
       user,
       clerkUser,
       getToken,
@@ -101,10 +122,105 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       refetchUser,
       signOut,
     }),
-    [isLoaded, isSignedIn, user, clerkUser, getToken, isAdmin, isFaculty, isClubOrganizer, signOut]
+    [isLoaded, effectiveIsSignedIn, user, clerkUser, getToken, isAdmin, isFaculty, isClubOrganizer, signOut]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
+
+export const MockAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [testUserId, setTestUserId] = React.useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('eventora_test_user_id') || localStorage.getItem('eventora_test_user_id');
+    }
+    return null;
+  });
+
+  useEffect(() => {
+    const checkStorage = () => {
+      const current =
+        sessionStorage.getItem('eventora_test_user_id') || localStorage.getItem('eventora_test_user_id');
+      if (current !== testUserId) {
+        setTestUserId(current);
+      }
+    };
+    checkStorage();
+    window.addEventListener('storage', checkStorage);
+    const interval = setInterval(checkStorage, 500);
+    return () => {
+      window.removeEventListener('storage', checkStorage);
+      clearInterval(interval);
+    };
+  }, [testUserId]);
+
+  const effectiveIsSignedIn = Boolean(testUserId);
+
+  useEffect(() => {
+    setAuthTokenGetter(async () => {
+      if (testUserId) return 'test-token';
+      return null;
+    });
+  }, [testUserId]);
+
+  const {
+    data: dbUserData,
+    isLoading: isDbUserLoading,
+    refetch: refetchUser,
+  } = useQuery({
+    queryKey: ['me', testUserId],
+    queryFn: async () => {
+      const res = await api.get<{ user: DbUser }>('/me', { showToast: false });
+      return res.user;
+    },
+    enabled: effectiveIsSignedIn,
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const user = dbUserData || null;
+  const isLoaded = !effectiveIsSignedIn || !isDbUserLoading;
+
+  const isAdmin = user?.role === 'ADMIN';
+  const isFaculty = user?.role === 'FACULTY' || isAdmin;
+  const isClubOrganizer = user?.role === 'ORGANIZER' || isFaculty || isAdmin;
+
+  const signOut = async () => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('eventora_test_user_id');
+      localStorage.removeItem('eventora_test_user_id');
+      setTestUserId(null);
+    }
+  };
+
+  const hasRole = (roles: string | string[]): boolean => {
+    if (!user) return false;
+    const allowed = Array.isArray(roles) ? roles : [roles];
+    if (allowed.includes('*')) return true;
+    if (user.role === 'ADMIN') return true;
+    return allowed.map((r) => r.toUpperCase()).includes(user.role.toUpperCase());
+  };
+
+  const value = useMemo(
+    () => ({
+      isLoaded,
+      isSignedIn: effectiveIsSignedIn,
+      user,
+      clerkUser: null,
+      getToken: async () => (testUserId ? 'test-token' : null),
+      isAdmin,
+      isFaculty,
+      isClubOrganizer,
+      hasRole,
+      refetchUser,
+      signOut,
+    }),
+    [isLoaded, effectiveIsSignedIn, user, isAdmin, isFaculty, isClubOrganizer, signOut, testUserId]
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
+
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = (props) => {
+  return isClerkKeyValid ? <ClerkAuthProvider {...props} /> : <MockAuthProvider {...props} />;
 };
 
 export function useAuth(): AuthContextValue {
@@ -180,9 +296,13 @@ export const RequireRole: React.FC<RequireRoleProps> = ({ roles, children, fallb
 };
 
 export const EventoraClerkProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  if (!isClerkKeyValid) {
+    return <MockAuthProvider>{children}</MockAuthProvider>;
+  }
+
   return (
     <ClerkProvider publishableKey={env.VITE_CLERK_PUBLISHABLE_KEY}>
-      <AuthProvider>{children}</AuthProvider>
+      <ClerkAuthProvider>{children}</ClerkAuthProvider>
     </ClerkProvider>
   );
 };

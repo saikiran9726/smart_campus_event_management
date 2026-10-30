@@ -14,8 +14,7 @@
     "db:seed": "tsx src/db/seed.ts",
     "dev": "tsx watch src/index.ts",
     "tsx": "tsx",
-    "generate-samples": "tsx scripts/generate-samples.ts",
-    "e2e": "echo \"api e2e placeholder\""
+    "generate-samples": "tsx scripts/generate-samples.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1160.0",

@@ -97,20 +97,68 @@ export async function authenticateRequest(
   if (env.NODE_ENV === 'test') {
     const testUserId = request.headers['x-test-user-id'];
     if (typeof testUserId === 'string' && testUserId.trim().length > 0) {
-      // First try by database UUID
-      let [testUser] = await db
-        .select()
-        .from(users)
-        .where(eq(users.id, testUserId))
-        .limit(1);
+      const cleanId = testUserId.trim();
+      let testUser: User | undefined;
 
-      // If not by UUID, try by clerkId
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanId);
+      if (isUuid) {
+        try {
+          const [found] = await db
+            .select()
+            .from(users)
+            .where(eq(users.id, cleanId))
+            .limit(1);
+          testUser = found;
+        } catch {
+          // Ignore UUID query error
+        }
+      }
+
+      // If not found by UUID or not a UUID, query by clerkId
       if (!testUser) {
-        [testUser] = await db
-          .select()
-          .from(users)
-          .where(eq(users.clerkId, testUserId))
-          .limit(1);
+        try {
+          const [found] = await db
+            .select()
+            .from(users)
+            .where(eq(users.clerkId, cleanId))
+            .limit(1);
+          testUser = found;
+        } catch {
+          // Ignore clerkId query error
+        }
+      }
+
+      // In test mode, if user is not in DB yet, auto-provision test user
+      if (!testUser && !isUuid) {
+        try {
+          const [created] = await db
+            .insert(users)
+            .values({
+              clerkId: cleanId,
+              email: `${cleanId.toLowerCase()}@campus.edu`,
+              fullName: `Test ${cleanId}`,
+              role: cleanId.includes('admin')
+                ? UserRole.ADMIN
+                : cleanId.includes('faculty')
+                ? UserRole.FACULTY
+                : cleanId.includes('organizer')
+                ? UserRole.ORGANIZER
+                : UserRole.STUDENT,
+            })
+            .onConflictDoNothing()
+            .returning();
+          testUser = created;
+          if (!testUser) {
+            const [found] = await db
+              .select()
+              .from(users)
+              .where(eq(users.clerkId, cleanId))
+              .limit(1);
+            testUser = found;
+          }
+        } catch {
+          // Ignore insertion error
+        }
       }
 
       if (testUser) {

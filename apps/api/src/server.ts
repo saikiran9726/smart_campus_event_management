@@ -13,6 +13,11 @@ import { ZodError } from 'zod';
 import { ApiErrorBody } from '@eventora/shared';
 import { pool } from './db/client';
 import { env } from './env';
+import { eq } from 'drizzle-orm';
+import { RegistrationStatus } from '@eventora/shared';
+import { db } from './db/client';
+import { registrations } from './db/schema';
+import { runOfferExpirySweepOnce } from './workers/offer-expiry.worker';
 import { AppError } from './lib/app-error';
 import { meRoutes } from './modules/users/me';
 import { clerkWebhookRoutes } from './modules/webhooks/clerk';
@@ -184,9 +189,12 @@ export function buildServer(opts: FastifyServerOptions = {}): FastifyInstance {
 
     // 5. Unknown Internal Server Error (no stack leakage)
     request.log.error(error);
+    if (process.env.NODE_ENV === 'test') {
+      console.error('SERVER ERROR IN TEST:', error);
+    }
     const response = {
       error: {
-        code: 'VALIDATION_FAILED',
+        code: 'INTERNAL_SERVER_ERROR',
         message: 'An unexpected internal server error occurred',
         details: { requestId: request.id },
       },
@@ -204,6 +212,19 @@ export function buildServer(opts: FastifyServerOptions = {}): FastifyInstance {
       return reply.status(503).send({ status: 'error', db: 'down' });
     }
   });
+
+  // Test-only endpoint to force waitlist offer expiry sweep in E2E tests
+  if (process.env.NODE_ENV === 'test') {
+    server.post('/test/expire-offers', async (request, reply) => {
+      await db
+        .update(registrations)
+        .set({ offerExpiresAt: new Date(Date.now() - 5000) })
+        .where(eq(registrations.status, RegistrationStatus.OFFERED));
+
+      const count = await runOfferExpirySweepOnce();
+      return reply.status(200).send({ success: true, expired: count });
+    });
+  }
 
   // Register core routes
   server.register(clerkWebhookRoutes);

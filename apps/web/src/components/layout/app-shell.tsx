@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
 import { useTheme } from '@/components/theme-provider';
 import { Button } from '@/components/ui/button';
@@ -31,6 +31,18 @@ export const AppShell: React.FC = () => {
   const { isSignedIn, user, clerkUser, isClubOrganizer, isAdmin, signOut } = useAuth();
   const { theme, setTheme, resolvedTheme } = useTheme();
   const location = useLocation();
+  const navigate = useNavigate();
+
+  const isScannerRoute = location.pathname.startsWith('/scanner');
+
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const scannerToken = sessionStorage.getItem('eventora_scanner_token');
+      if (scannerToken && !isScannerRoute) {
+        navigate('/scanner', { replace: true });
+      }
+    }
+  }, [location.pathname, isScannerRoute, navigate]);
 
   const toggleTheme = () => {
     setTheme(resolvedTheme === 'dark' ? 'light' : 'dark');
@@ -55,6 +67,17 @@ export const AppShell: React.FC = () => {
       : []),
     { label: 'Profile', path: '/profile', icon: User },
   ];
+
+  if (isScannerRoute) {
+    return (
+      <div className="min-h-screen bg-black text-white antialiased">
+        <main id="main-content">
+          <Outlet />
+        </main>
+        <Toaster />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground antialiased selection:bg-indigo-500/20">
