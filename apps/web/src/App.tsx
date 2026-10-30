@@ -5,20 +5,20 @@ import { ErrorBoundary } from '@/components/primitives/error-boundary';
 import { Skeleton } from '@/components/ui/skeleton';
 import { RequireAuth, RequireRole } from '@/lib/auth';
 
-// Lazy-loaded routes
-const DiscoverPage = lazy(() => import('@/routes/discover'));
-const EventDetailPage = lazy(() => import('@/routes/event-detail'));
-const VerifyCertPage = lazy(() => import('@/routes/verify-cert'));
-const VerifyOdPage = lazy(() => import('@/routes/verify-od'));
+// Full Feature Implementations
+const DiscoverPage = lazy(() => import('@/features/discovery/DiscoveryPage'));
+const EventDetailPage = lazy(() => import('@/features/event/EventPage'));
+const VerifyCertPage = lazy(() => import('@/features/verify/VerifyCertPage'));
+const VerifyOdPage = lazy(() => import('@/features/verify/VerifyOdPage'));
 const FacultyDecisionPage = lazy(() => import('@/routes/faculty-decision'));
 const ScannerUnlockPage = lazy(() => import('@/routes/scanner-unlock'));
-const WaitlistClaimPage = lazy(() => import('@/routes/waitlist-claim'));
+const WaitlistClaimPage = lazy(() => import('@/features/claim/ClaimOfferPage'));
 
-const PassportPage = lazy(() => import('@/routes/passport'));
+const PassportPage = lazy(() => import('@/features/passport/PassportPage'));
 const CommunityPage = lazy(() => import('@/routes/community'));
 const OrganizerPage = lazy(() => import('@/routes/organizer'));
 const AdminPage = lazy(() => import('@/routes/admin'));
-const ProfilePage = lazy(() => import('@/routes/profile'));
+const ProfilePage = lazy(() => import('@/features/profile/ProfilePage'));
 
 const PageFallback: React.FC = () => (
   <div className="container max-w-5xl py-8 px-4 sm:px-8 space-y-6 mx-auto animate-pulse">
