@@ -1,0 +1,92 @@
+@import '@fontsource-variable/inter';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --brand-indigo: #4338ca;
+    --accent-violet: #6366f1;
+    --status-emerald: #059669;
+    --status-rose: #e11d48;
+    --status-amber: #d97706;
+    --color-slate: #0f172a;
+
+    /* Light Mode */
+    --background: 210 40% 98%;      /* #f8fafc */
+    --foreground: 222 47% 11%;      /* #0f172a */
+    --card: 0 0% 100%;              /* #ffffff */
+    --card-foreground: 222 47% 11%; /* #0f172a */
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 243 75% 59%;         /* #4338ca */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 239 84% 67%;          /* #6366f1 */
+    --accent-foreground: 0 0% 100%;
+    --destructive: 346 84% 50%;     /* #e11d48 */
+    --destructive-foreground: 0 0% 100%;
+    --border: 214.3 31.8% 91.4%;    /* slate-200 / 80% */
+    --input: 214.3 31.8% 91.4%;
+    --ring: 243 75% 59%;            /* Indigo ring */
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    /* Dark Mode */
+    --background: 224 39% 7%;       /* #0b0f19 */
+    --foreground: 210 40% 98%;      /* #f8fafc */
+    --card: 222 41% 13%;            /* #131b2e */
+    --card-foreground: 210 40% 98%; /* #f8fafc */
+    --popover: 222 41% 13%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 239 84% 67%;         /* #6366f1 */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 239 84% 67%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 346 84% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 217.2 32.6% 17.5%;     /* #1e293b */
+    --input: 217.2 32.6% 17.5%;
+    --ring: 239 84% 67%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    letter-spacing: -0.02em;
+  }
+}
+
+@layer utilities {
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-500/20 dark:focus-visible:ring-indigo-500/30;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

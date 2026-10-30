@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Eventora - Offline</title>
+    <style>
+      :root {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        background-color: #0b0f19;
+        color: #f8fafc;
+      }
+      body {
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        padding: 24px;
+        text-align: center;
+        box-sizing: border-box;
+      }
+      .card {
+        background-color: #131b2e;
+        border: 1px solid #1e293b;
+        border-radius: 16px;
+        padding: 32px 24px;
+        max-width: 420px;
+        width: 100%;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+      }
+      .badge {
+        display: inline-block;
+        background-color: #d97706;
+        color: #ffffff;
+        font-weight: 600;
+        font-size: 12px;
+        padding: 4px 10px;
+        border-radius: 9999px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 16px;
+      }
+      h1 {
+        font-size: 24px;
+        margin: 0 0 12px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      p {
+        font-size: 14px;
+        color: #94a3b8;
+        line-height: 1.5;
+        margin: 0 0 24px;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background-color: #4338ca;
+        color: #ffffff;
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 14px;
+        padding: 12px 24px;
+        border-radius: 8px;
+        cursor: pointer;
+        border: none;
+        min-height: 48px;
+        width: 100%;
+        box-sizing: border-box;
+      }
+      .btn:hover {
+        background-color: #3730a3;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="badge">No Internet Connection</div>
+      <h1>You're currently offline</h1>
+      <p>
+        Eventora is offline. Check-in gates and scanned ticket validations require a live connection.
+        Previously loaded cached events and your offline pass remain available.
+      </p>
+      <button class="btn" onclick="window.location.reload()">Retry Connection</button>
+    </div>
+  </body>
+</html>
