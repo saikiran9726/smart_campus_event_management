@@ -85,10 +85,7 @@ test.describe('Atomic Concurrency: 1 Seat Race Condition', () => {
         .first()
     ).toBeVisible();
     await expect(
-      page1
-        .locator('text=Join Waitlist')
-        .or(page1.locator('text=Join Queue'))
-        .first()
+      page1.locator('button:has-text("Join Queue")').first()
     ).toBeVisible();
 
     await context1.close();

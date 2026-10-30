@@ -30,6 +30,13 @@ import {
 
 export type ScanMode = 'GATE' | 'MEAL' | 'KIT';
 
+export const YELLOW_REASONS = {
+  WRONG_EVENT: 'Wrong Event — Ticket registered for another event',
+  INVALID_TOKEN: 'Invalid Ticket — Unrecognized token',
+  VOID: 'Ticket Voided — Cancelled registration',
+  NOT_CHECKED_IN: 'Not Checked In — Entry check-in required before Meal/Kit redemption',
+};
+
 interface ScanFeedbackState {
   result: 'GREEN' | 'RED' | 'YELLOW';
   title: string;
@@ -80,7 +87,14 @@ export const ScannerPage: React.FC = () => {
   // App & Scan states
   const [mode, setMode] = useState<ScanMode>('GATE');
   const [feedback, setFeedback] = useState<ScanFeedbackState | null>(null);
-  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [isOffline, setIsOffline] = useState(
+    typeof navigator !== 'undefined' ? !navigator.onLine : false
+  );
+  const isOfflineRef = useRef(isOffline);
+
+  useEffect(() => {
+    isOfflineRef.current = isOffline;
+  }, [isOffline]);
   const [stats, setStats] = useState<GateStats>({
     gate: { checkedIn: 0, total: 0 },
     meal: { claimed: 0, total: 0 },
@@ -121,10 +135,16 @@ export const ScannerPage: React.FC = () => {
     }
   }, [navigate]);
 
-  // 2. Offline network listener
+  // 2. Offline network listener (Atomic guard: pauses processing when offline)
   useEffect(() => {
-    const handleOnline = () => setIsOffline(false);
-    const handleOffline = () => setIsOffline(true);
+    const handleOnline = () => {
+      setIsOffline(false);
+      isOfflineRef.current = false;
+    };
+    const handleOffline = () => {
+      setIsOffline(true);
+      isOfflineRef.current = true;
+    };
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
@@ -210,24 +230,20 @@ export const ScannerPage: React.FC = () => {
     async (token: string) => {
       if (!sessionInfo?.eventId) return;
 
-      // Offline check: block scan
-      if (navigator.onLine === false || isOffline) {
-        showFeedback({
-          result: 'YELLOW',
-          title: 'DEVICE OFFLINE',
-          subtitle: 'Network connection lost',
-          detail: 'Gate scans blocked while offline to prevent state desync.',
-        });
+      // Offline check: Atomic guard - halt and prohibit scan attempts immediately
+      if (typeof navigator !== 'undefined' && (!navigator.onLine || isOfflineRef.current)) {
+        setIsOffline(true);
+        isOfflineRef.current = true;
         return;
       }
 
-      // Local Regex format validation
+      // Local Regex format validation: map malformed tokens directly to YELLOW INVALID_TOKEN
       if (!TOKEN_REGEX.test(token)) {
         showFeedback({
           result: 'YELLOW',
-          title: 'INVALID QR CODE',
-          subtitle: 'Malformed ticket token format',
-          detail: 'This is not an authentic Eventora ticket.',
+          title: 'TICKET REJECTED',
+          subtitle: YELLOW_REASONS.INVALID_TOKEN,
+          detail: 'INVALID_TOKEN',
         });
         return;
       }
@@ -278,23 +294,49 @@ export const ScannerPage: React.FC = () => {
             meta: `Token: ${token.slice(0, 11)}...`,
           });
         } else {
+          // Accurate YELLOW feedback mapping
+          const code = (res.code || res.error || 'INVALID_TOKEN') as string;
+          const subtitle =
+            (YELLOW_REASONS as Record<string, string>)[code] ||
+            res.message ||
+            YELLOW_REASONS.INVALID_TOKEN;
           showFeedback({
             result: 'YELLOW',
-            title: 'CANNOT PROCEED',
-            subtitle: res.message || 'Invalid or unconfirmed ticket',
-            detail: res.code || 'YELLOW_ALERT',
+            title: 'TICKET REJECTED',
+            subtitle,
+            detail: code,
           });
         }
       } catch (err: any) {
+        // Connection error detection: immediately pause processing, show amber banner, drop unconfirmed scan
+        const isConnError =
+          (typeof navigator !== 'undefined' && !navigator.onLine) ||
+          err?.name === 'TypeError' ||
+          err?.message?.toLowerCase().includes('network') ||
+          err?.message?.toLowerCase().includes('failed to fetch') ||
+          err?.message?.toLowerCase().includes('connection');
+
+        if (isConnError) {
+          setIsOffline(true);
+          isOfflineRef.current = true;
+          // Live database connection required - unconfirmed scan dropped completely, never queued or cached
+          return;
+        }
+
+        const code = (err.code || 'INVALID_TOKEN') as string;
+        const subtitle =
+          (YELLOW_REASONS as Record<string, string>)[code] ||
+          err.message ||
+          YELLOW_REASONS.INVALID_TOKEN;
         showFeedback({
           result: 'YELLOW',
-          title: 'SCAN REJECTED',
-          subtitle: err.message || 'Verification error',
-          detail: 'Ensure ticket is for this event.',
+          title: 'TICKET REJECTED',
+          subtitle,
+          detail: code,
         });
       }
     },
-    [sessionInfo?.eventId, isOffline, mode, showFeedback, fetchStats]
+    [sessionInfo?.eventId, mode, showFeedback, fetchStats]
   );
 
   // 6. Camera scanning loop
@@ -303,6 +345,12 @@ export const ScannerPage: React.FC = () => {
 
     const tick = async () => {
       if (!active) return;
+
+      // Atomic offline guard: immediately pause camera processing loop when offline
+      if (typeof navigator !== 'undefined' && (!navigator.onLine || isOfflineRef.current)) {
+        animFrameRef.current = requestAnimationFrame(tick);
+        return;
+      }
 
       const video = videoRef.current;
       const canvas = canvasRef.current;
@@ -553,11 +601,14 @@ export const ScannerPage: React.FC = () => {
       {/* Dim vignette / gradient on top and bottom */}
       <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-transparent to-black/90 pointer-events-none z-10" />
 
-      {/* Offline banner guard */}
+      {/* Offline banner guard: Amber (#D97706) with dark slate text (#0F172A) */}
       {isOffline && (
-        <div className="absolute top-0 inset-x-0 z-50 bg-amber-500 text-slate-950 px-4 py-2.5 font-bold text-center text-sm flex items-center justify-center gap-2 shadow-lg animate-in slide-in-from-top">
-          <WifiOff className="h-4 w-4 shrink-0" />
-          <span>Device Offline — Gate scanning paused to prevent duplicate entry desync</span>
+        <div
+          data-testid="scanner-offline-banner"
+          className="absolute top-0 inset-x-0 z-50 bg-[#D97706] text-[#0F172A] px-4 py-3 font-bold text-center text-sm flex items-center justify-center gap-2 shadow-lg animate-in slide-in-from-top"
+        >
+          <WifiOff className="h-4 w-4 shrink-0 text-[#0F172A]" />
+          <span>Offline: scanning paused. Live database connection required.</span>
         </div>
       )}
 
@@ -633,7 +684,7 @@ export const ScannerPage: React.FC = () => {
               ? 'bg-[#059669] text-white'
               : feedback.result === 'RED'
               ? 'bg-[#E11D48] text-white'
-              : 'bg-[#D97706] text-slate-950'
+              : 'bg-[#D97706] text-[#0F172A]'
           }`}
         >
           <div className="space-y-4 max-w-md mx-auto">
@@ -644,7 +695,7 @@ export const ScannerPage: React.FC = () => {
               <XCircle className="h-24 w-24 text-white mx-auto drop-shadow-md animate-pulse" />
             )}
             {feedback.result === 'YELLOW' && (
-              <AlertTriangle className="h-24 w-24 text-slate-950 mx-auto drop-shadow-md" />
+              <AlertTriangle className="h-24 w-24 text-[#0F172A] mx-auto drop-shadow-md" />
             )}
 
             <div className="space-y-1">
@@ -677,22 +728,33 @@ export const ScannerPage: React.FC = () => {
 
       {/* Bottom Reach Controls (Single Handed Thumb Zone) */}
       <div className="relative z-20 pb-safe pt-2 px-3 sm:px-4 space-y-3">
-        {/* Live Counters Pill */}
+        {/* Live Counters Pill: Checked In, Total Remaining, Meals, Kits */}
         <div className="flex items-center justify-around bg-slate-900/80 backdrop-blur-md rounded-2xl p-2.5 border border-white/10 text-xs font-medium">
           <div className="flex flex-col items-center">
-            <span className="text-slate-400 font-semibold flex items-center gap-1">
+            <span className="text-slate-400 font-semibold flex items-center gap-1 text-[11px]">
               <DoorOpen className="h-3.5 w-3.5 text-indigo-400" />
-              Gate
+              Checked In
             </span>
             <span className="font-bold text-white text-sm tabular-nums">
-              {stats.gate.checkedIn}/{stats.gate.total || '0'}
+              {stats.gate.checkedIn}
             </span>
           </div>
 
           <div className="h-6 w-px bg-white/10" />
 
           <div className="flex flex-col items-center">
-            <span className="text-slate-400 font-semibold flex items-center gap-1">
+            <span className="text-slate-400 font-semibold flex items-center gap-1 text-[11px]">
+              Remaining
+            </span>
+            <span className="font-bold text-white text-sm tabular-nums">
+              {Math.max(0, stats.gate.total - stats.gate.checkedIn)}
+            </span>
+          </div>
+
+          <div className="h-6 w-px bg-white/10" />
+
+          <div className="flex flex-col items-center">
+            <span className="text-slate-400 font-semibold flex items-center gap-1 text-[11px]">
               <Utensils className="h-3.5 w-3.5 text-amber-400" />
               Meals
             </span>
@@ -704,7 +766,7 @@ export const ScannerPage: React.FC = () => {
           <div className="h-6 w-px bg-white/10" />
 
           <div className="flex flex-col items-center">
-            <span className="text-slate-400 font-semibold flex items-center gap-1">
+            <span className="text-slate-400 font-semibold flex items-center gap-1 text-[11px]">
               <PackageCheck className="h-3.5 w-3.5 text-emerald-400" />
               Kits
             </span>
@@ -741,7 +803,7 @@ export const ScannerPage: React.FC = () => {
             }`}
           >
             <Utensils className="h-4 w-4" />
-            Lunch
+            Lunch Counter
           </button>
 
           <button

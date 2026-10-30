@@ -2,12 +2,13 @@ import { and, asc, eq, gte, lte, sql } from 'drizzle-orm';
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { EventStatus, UserRole } from '@eventora/shared';
 import { db } from '../../db/client';
-import { clubs, events, teams, users, venues, winners } from '../../db/schema';
+import { clubs, events, registrations, teams, users, venues, waitlistEntries, winners } from '../../db/schema';
 import { AppError } from '../../lib/app-error';
 import { requireClubRole, requireEventOrganizer } from '../../middleware/rbac';
 import { requireAuth } from '../../plugins/auth';
 import { emitSeats } from '../../realtime/io';
 import { ensureEventDoubtRoom, postEventCardToFeed } from '../channels/event-feed';
+import { getLiveWaitlistPosition } from '../waitlist/service';
 
 export function computeSeatLabel(remainingCapacity: number, waitlistCount = 0): string {
   if (remainingCapacity > 0) {
@@ -388,6 +389,30 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
       .where(eq(winners.eventId, event.id))
       .orderBy(asc(winners.rank));
 
+    let userWaitlistPosition: number | null = null;
+    let userRegistration: { id: string; status: string; waitlistPosition?: number } | null = null;
+    if (request.user?.id) {
+      const [reg] = await db
+        .select({ id: registrations.id, status: registrations.status })
+        .from(registrations)
+        .where(and(eq(registrations.eventId, event.id), eq(registrations.userId, request.user.id)))
+        .limit(1);
+
+      if (reg) {
+        if (reg.status === 'WAITLISTED') {
+          const wl = await getLiveWaitlistPosition(request.user.id, event.id);
+          if (wl.position) {
+            userWaitlistPosition = wl.position;
+          }
+        }
+        userRegistration = {
+          id: reg.id,
+          status: reg.status,
+          waitlistPosition: userWaitlistPosition ?? undefined,
+        };
+      }
+    }
+
     return reply.status(200).send({
       event: {
         ...event,
@@ -400,6 +425,8 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
           prize: w.rank === 1 ? '1st Place' : w.rank === 2 ? '2nd Place' : '3rd Place',
         })),
         seatLabel: computeSeatLabel(event.remainingCapacity),
+        userWaitlistPosition,
+        userRegistration,
       },
     });
   });

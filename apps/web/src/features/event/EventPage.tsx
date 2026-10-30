@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
@@ -73,6 +73,7 @@ export interface EventDetailData {
     ticketToken?: string;
     waitlistPosition?: number;
   } | null;
+  userWaitlistPosition?: number | null;
 }
 
 export const EventPage: React.FC = () => {
@@ -194,7 +195,21 @@ Build production-grade autonomous agent systems, multi-agent workflows, and veri
     }
   };
 
-  const ctaText = isSoldOut ? 'Join Waitlist' : 'Register Now';
+  const [waitlistPosition, setWaitlistPosition] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (event?.userRegistration?.waitlistPosition) {
+      setWaitlistPosition(event.userRegistration.waitlistPosition);
+    } else if (typeof event?.userWaitlistPosition === 'number') {
+      setWaitlistPosition(event.userWaitlistPosition);
+    }
+  }, [event?.userRegistration?.waitlistPosition, event?.userWaitlistPosition]);
+
+  const ctaText = isSoldOut
+    ? waitlistPosition !== null
+      ? `Join Queue (Position #${waitlistPosition})`
+      : 'Join Queue'
+    : 'Register Now';
 
   return (
     <div className="container max-w-7xl px-4 sm:px-8 py-8 space-y-8 mx-auto">
@@ -444,6 +459,11 @@ Build production-grade autonomous agent systems, multi-agent workflows, and veri
           pricePaise={event.pricePaise}
           isOpen={isRegisterOpen}
           onClose={() => setIsRegisterOpen(false)}
+          onSuccess={(reg) => {
+            if (reg && typeof (reg as any).waitlistPosition === 'number') {
+              setWaitlistPosition((reg as any).waitlistPosition);
+            }
+          }}
         />
       )}
     </div>

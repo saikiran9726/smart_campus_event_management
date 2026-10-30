@@ -92,8 +92,8 @@ describe('Student UI Comprehensive Flow Suite', () => {
     });
   });
 
-  describe('2. Event Details: Live CTA Morphs to Join Waitlist on seats:update to 0', () => {
-    it('CTA changes from Register Now to Join Waitlist when capacity reaches zero', async () => {
+  describe('2. Event Details: Live CTA Morphs to Join Queue on seats:update to 0', () => {
+    it('CTA changes from Register Now to Join Queue when capacity reaches zero', async () => {
       render(
         <QueryClientProvider client={queryClient}>
           <MemoryRouter>
@@ -116,9 +116,9 @@ describe('Student UI Comprehensive Flow Suite', () => {
         });
       });
 
-      // CTA button text morphs to "Join Waitlist"
+      // CTA button text morphs to "Join Queue"
       await waitFor(() => {
-        expect(screen.getByTestId('event-cta-button')).toHaveTextContent('Join Waitlist');
+        expect(screen.getByTestId('event-cta-button')).toHaveTextContent('Join Queue');
       });
     });
   });

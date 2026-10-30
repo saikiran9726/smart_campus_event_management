@@ -75,6 +75,10 @@ class ScannerAudioEngine {
 
   playWarningTone(): void {
     try {
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        navigator.vibrate([200, 100, 200]);
+      }
+
       const ctx = this.getContext();
       if (!ctx) return;
       const now = ctx.currentTime;

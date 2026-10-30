@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { ScannerUnlockPage } from '../features/scanner/ScannerUnlockPage';
-import { ScannerPage } from '../features/scanner/ScannerPage';
+import { ScannerPage, YELLOW_REASONS } from '../features/scanner/ScannerPage';
 import { ChatThread } from '../features/community/ChatThread';
 import { api } from '@/lib/api';
 
@@ -112,6 +112,57 @@ describe('Scanner PWA Suite (Prompt 16)', () => {
     const lookupBtn = screen.getByTestId('scanner-lookup-button');
     fireEvent.click(lookupBtn);
     expect(screen.getByText('Manual Roll Lookup')).toBeInTheDocument();
+  });
+
+  it('4. YELLOW Feedback Mapping: accurately maps each API rejection reason', () => {
+    expect(YELLOW_REASONS.WRONG_EVENT).toBe('Wrong Event — Ticket registered for another event');
+    expect(YELLOW_REASONS.INVALID_TOKEN).toBe('Invalid Ticket — Unrecognized token');
+    expect(YELLOW_REASONS.VOID).toBe('Ticket Voided — Cancelled registration');
+    expect(YELLOW_REASONS.NOT_CHECKED_IN).toBe('Not Checked In — Entry check-in required before Meal/Kit redemption');
+  });
+
+  it('5. Offline Security: displays amber offline banner, halts scans, and never replays queued scans on reconnect', async () => {
+    sessionStorage.setItem('eventora_scanner_token', 'jwt_scanner_token_xyz');
+    sessionStorage.setItem(
+      'eventora_scanner_event',
+      JSON.stringify({
+        eventId: 'evt_123',
+        eventTitle: 'HackFest 2026',
+        volunteerName: 'Alex Volunteer',
+      })
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/scanner']}>
+        <ScannerPage />
+      </MemoryRouter>
+    );
+
+    // Simulate going offline
+    fireEvent(window, new Event('offline'));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Offline: scanning paused. Live database connection required.')
+      ).toBeInTheDocument();
+    });
+
+    const banner = screen.getByTestId('scanner-offline-banner');
+    expect(banner).toHaveClass('bg-[#D97706]');
+    expect(banner).toHaveClass('text-[#0F172A]');
+
+    // Clear post mock calls
+    vi.mocked(api.post).mockClear();
+
+    // Reconnection event
+    fireEvent(window, new Event('online'));
+
+    // Assert that no queued scans were replayed on reconnect
+    expect(api.post).not.toHaveBeenCalledWith(
+      '/gate/scan',
+      expect.anything(),
+      expect.anything()
+    );
   });
 });
 

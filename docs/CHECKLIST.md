@@ -37,7 +37,19 @@ This checklist confirms verification of all domain requirements, security guaran
   - 6-digit numeric passkey generation (`SCAN-######`) and setup QR generator.
   - Fastify route guard isolating scanner tokens to `/gate/*` endpoints only.
   - Single-handed PWA scanner with live counters, roll lookup sheet, and spot walk-in admission.
-  - *Files:* `apps/api/src/modules/passkeys/service.ts`, `apps/api/src/modules/gate/service.ts`, `apps/web/src/features/scanner/ScannerPage.tsx`
+  - Mode switcher buttons: `[ Gate Entry ]`, `[ Lunch Counter ]`, `[ Kit Desk ]`.
+  - Cloudflare Turnstile widget on scanner passkey unlock page.
+  - *Files:* `apps/api/src/modules/passkeys/service.ts`, `apps/api/src/modules/gate/service.ts`, `apps/web/src/features/scanner/ScannerPage.tsx`, `apps/web/src/features/scanner/ScannerUnlockPage.tsx`
+
+- [x] **Scanner Offline Security & Yellow Feedback Mapping (Prompt 17 Strict Guard)**
+  - Atomic guard: Zero IndexedDB queuing, retry loops, or background sync logic. If offline or network connection fails, camera processing immediately halts and Amber banner displays: `"Offline: scanning paused. Live database connection required."` Unconfirmed scans are dropped completely.
+  - High-contrast Yellow Feedback: Background `#D97706` with text `#0F172A`, mapping `WRONG_EVENT`, `INVALID_TOKEN`, `VOID`, and `NOT_CHECKED_IN` to their distinct user explanations.
+  - Haptic feedback: `navigator.vibrate([200, 100, 200])` for both `RED` and `YELLOW` states.
+  - *Files:* `apps/web/src/features/scanner/ScannerPage.tsx`, `apps/web/src/features/scanner/scanner-sound.ts`, `apps/web/src/__tests__/scanner-community.test.tsx`
+
+- [x] **Event Detail CTA Copy & Queue Position**
+  - Registration CTA renders `"Join Queue"` when capacity is 0 and user has not joined, and `"Join Queue (Position #N)"` once waitlist position is known.
+  - *Files:* `apps/web/src/features/event/EventPage.tsx`, `apps/api/src/modules/events/routes.ts`, `e2e/atomic-concurrency.spec.ts`
 
 - [x] **No-Show Strike & Cooldown Engine**
   - Automated sweep marking unattended registrations as `NO_SHOW` 2 hours post-event.

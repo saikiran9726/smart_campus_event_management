@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
+import { TurnstileWidget } from '@/components/turnstile-widget';
 import { QrCode, ShieldCheck, ArrowRight, UserCheck } from 'lucide-react';
 
 interface ScannerUnlockResponse {
@@ -25,7 +26,7 @@ export const ScannerUnlockPage: React.FC = () => {
   const [digits, setDigits] = useState(initialDigits);
   const [volunteerName, setVolunteerName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [turnstileToken] = useState('test-pass');
+  const [turnstileToken, setTurnstileToken] = useState('test-pass');
 
   useEffect(() => {
     if (codeParam) {
@@ -171,6 +172,10 @@ export const ScannerUnlockPage: React.FC = () => {
             <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-400 flex items-center gap-2">
               <ShieldCheck className="h-4 w-4 text-emerald-400 shrink-0" />
               <span>Scoped least-privilege token. Session active for 8 hours.</span>
+            </div>
+
+            <div className="flex justify-center" data-testid="scanner-turnstile-container">
+              <TurnstileWidget onSuccess={(token) => setTurnstileToken(token)} />
             </div>
 
             <Button
