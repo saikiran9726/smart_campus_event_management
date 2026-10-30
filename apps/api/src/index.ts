@@ -10,6 +10,7 @@ export * from './lib/app-error';
 export * from './middleware/rbac';
 export * from './plugins/auth';
 export * from './realtime/io';
+export * from './modules/forms';
 export * from './server';
 
 async function start(): Promise<void> {

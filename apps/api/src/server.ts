@@ -20,6 +20,7 @@ import { clubRoutes } from './modules/clubs/routes';
 import { uploadRoutes } from './modules/uploads/routes';
 import { proposalRoutes } from './modules/proposals/routes';
 import { eventRoutes } from './modules/events/routes';
+import { formRoutes } from './modules/forms';
 
 export function buildServer(opts: FastifyServerOptions = {}): FastifyInstance {
   const server = fastify({
@@ -162,6 +163,7 @@ export function buildServer(opts: FastifyServerOptions = {}): FastifyInstance {
   server.register(uploadRoutes);
   server.register(proposalRoutes);
   server.register(eventRoutes);
+  server.register(formRoutes);
 
   return server;
 }
