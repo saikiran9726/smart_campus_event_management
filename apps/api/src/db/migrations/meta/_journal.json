@@ -29,6 +29,13 @@
       "when": 1793368300000,
       "tag": "0003_venue_bookings_exclude_pending_hold",
       "breakpoints": false
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793368400000,
+      "tag": "0004_events_strikes_processed_at",
+      "breakpoints": false
     }
   ]
 }

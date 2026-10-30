@@ -21,6 +21,9 @@ import { uploadRoutes } from './modules/uploads/routes';
 import { proposalRoutes } from './modules/proposals/routes';
 import { eventRoutes } from './modules/events/routes';
 import { formRoutes } from './modules/forms';
+import { registrationRoutes } from './modules/registrations';
+import { paymentRoutes } from './modules/payments';
+import { waitlistRoutes } from './modules/waitlist';
 
 export function buildServer(opts: FastifyServerOptions = {}): FastifyInstance {
   const server = fastify({
@@ -164,6 +167,9 @@ export function buildServer(opts: FastifyServerOptions = {}): FastifyInstance {
   server.register(proposalRoutes);
   server.register(eventRoutes);
   server.register(formRoutes);
+  server.register(registrationRoutes);
+  server.register(paymentRoutes);
+  server.register(waitlistRoutes);
 
   return server;
 }
