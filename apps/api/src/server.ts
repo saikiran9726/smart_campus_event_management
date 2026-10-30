@@ -38,6 +38,7 @@ import { odRoutes } from './modules/od';
 import { reviewRoutes } from './modules/reviews';
 import { verifyRoutes } from './modules/verify';
 import { budgetRoutes } from './modules/budget';
+import { analyticsRoutes } from './modules/analytics';
 
 export function buildServer(opts: FastifyServerOptions = {}): FastifyInstance {
   const server = fastify({
@@ -229,6 +230,7 @@ export function buildServer(opts: FastifyServerOptions = {}): FastifyInstance {
   server.register(reviewRoutes);
   server.register(verifyRoutes);
   server.register(budgetRoutes);
+  server.register(analyticsRoutes);
 
   return server;
 }

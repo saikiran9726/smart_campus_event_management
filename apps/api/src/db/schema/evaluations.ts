@@ -1,6 +1,7 @@
 import {
   boolean,
   check,
+  index,
   pgTable,
   smallint,
   text,
@@ -51,6 +52,7 @@ export const reviews = pgTable(
   },
   (table) => [
     uniqueIndex('reviews_event_user_idx').on(table.eventId, table.userId),
+    index('reviews_event_stars_idx').on(table.eventId, table.stars),
     check('reviews_stars_check', sql`${table.stars} >= 1 AND ${table.stars} <= 5`),
   ]
 );

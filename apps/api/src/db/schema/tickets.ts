@@ -38,6 +38,8 @@ export const tickets = pgTable(
   },
   (table) => [
     index('tickets_event_status_idx').on(table.eventId, table.status),
+    index('tickets_event_checked_in_at_idx').on(table.eventId, table.checkedInAt),
+    index('tickets_event_checked_in_via_idx').on(table.eventId, table.checkedInVia),
   ]
 );
 
@@ -129,6 +131,8 @@ export const scanLogs = pgTable(
   },
   (table) => [
     index('scan_logs_event_scanned_at_idx').on(table.eventId, table.scannedAt),
+    index('scan_logs_event_result_idx').on(table.eventId, table.result),
+    index('scan_logs_event_ticket_id_idx').on(table.eventId, table.ticketId),
   ]
 );
 
