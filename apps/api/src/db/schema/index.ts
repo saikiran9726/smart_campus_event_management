@@ -15,4 +15,5 @@ export * from './teams';
 export * from './evaluations';
 export * from './budget';
 export * from './audit';
+export * from './webhooks';
 export * from './relations';
