@@ -28,6 +28,7 @@ const envSchema = z.object({
   TURNSTILE_SITE_KEY: z.string().default('0x4AAAAAAplaceholder_site_key'),
 
   // Resend Email
+  EMAIL_PROVIDER: z.enum(['resend', 'console']).default('console'),
   RESEND_API_KEY: z.string().default('re_placeholder_resend_api_key'),
   MAIL_FROM: z.string().default('Eventora <events@eventora.campus.edu>'),
 

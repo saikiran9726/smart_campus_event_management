@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>24-Hour Reminder - {{eventTitle}}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
+    .card { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; }
+    .header { background: #0284c7; color: #ffffff; padding: 28px; text-align: center; }
+    .header h1 { margin: 0 0 8px 0; font-size: 22px; font-weight: 700; }
+    .content { padding: 32px; font-size: 15px; }
+    .notice-box { background: #f0f9ff; border-left: 4px solid #0284c7; padding: 16px; margin: 20px 0; border-radius: 4px; }
+    .list-item { margin-bottom: 12px; }
+    .btn { display: inline-block; background: #0284c7; color: #ffffff !important; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 14px; }
+    .footer { padding: 20px 32px; background: #f8fafc; border-top: 1px solid #e2e8f0; text-align: center; font-size: 13px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1>Event Reminder: Tomorrow</h1>
+      <p>{{eventTitle}}</p>
+    </div>
+    <div class="content">
+      <p>Hi <strong>{{studentName}}</strong> (Roll: <strong>{{rollNumber}}</strong>),</p>
+      <p>This is a 24-hour reminder that <strong>{{eventTitle}}</strong> begins tomorrow at <strong>{{eventStart}}</strong> at <strong>{{venueName}}</strong>.</p>
+      
+      <div class="notice-box">
+        <h4 style="margin: 0 0 8px 0; color: #0369a1;">Gate & Entry Guidelines</h4>
+        <div class="list-item"><strong>Entry Gates:</strong> {{gateNumbers}}</div>
+        <div class="list-item"><strong>Required ID Proofs:</strong> {{requiredIdProofs}}</div>
+        <div class="list-item"><strong>Campus Parking:</strong> {{parkingGuidelines}}</div>
+        <div class="list-item"><strong>General Rules:</strong> {{rules}}</div>
+      </div>
+
+      <p style="text-align: center; margin-top: 28px;">
+        <a href="{{passportUrl}}" class="btn">Open One-Tap Pass Launcher</a>
+      </p>
+    </div>
+    <div class="footer">
+      Eventora Smart Campus Event OS &bull; Campus Safety & Events Committee
+    </div>
+  </div>
+</body>
+</html>

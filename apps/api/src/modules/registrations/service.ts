@@ -29,6 +29,7 @@ import {
   calculateWaitlistPosition,
   releaseSeat,
 } from '../waitlist/service';
+import { notifyBookingConfirmed } from '../comms/queue';
 import { issueTicket } from './ticket-service';
 
 export interface RegisterForEventParams {
@@ -177,19 +178,8 @@ export async function registerForEvent(
         // Issue ticket
         const ticket = await issueTicket(tx, reg!);
 
-        // Enqueue confirmation notification
-        await tx.insert(notifications).values({
-          userId: user.id,
-          kind: NotificationKind.BOOKING_CONFIRMED,
-          channel: NotificationChannel.EMAIL,
-          payload: {
-            eventId,
-            registrationId: reg!.id,
-            ticketToken: ticket.token,
-            eventTitle: event.title,
-          },
-          status: 'QUEUED',
-        });
+        // Enqueue confirmation notifications (EMAIL and WHATSAPP)
+        await notifyBookingConfirmed(tx, reg!.id);
 
         return {
           outcome: 'CONFIRMED' as const,
@@ -456,20 +446,9 @@ export async function claimWaitlistOffer(
       };
     }
 
-    // Free event -> Issue ticket and enqueue notification
+    // Free event -> Issue ticket and enqueue notifications (EMAIL & WHATSAPP)
     const ticket = await issueTicket(tx, claimed);
-
-    await tx.insert(notifications).values({
-      userId: user.id,
-      kind: NotificationKind.BOOKING_CONFIRMED,
-      channel: NotificationChannel.EMAIL,
-      payload: {
-        eventId: claimed.eventId,
-        registrationId: claimed.id,
-        ticketToken: ticket.token,
-      },
-      status: 'QUEUED',
-    });
+    await notifyBookingConfirmed(tx, claimed.id);
 
     return {
       outcome: 'CONFIRMED',

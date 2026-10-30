@@ -5,6 +5,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 import { notificationChannelEnum, notificationKindEnum } from './enums';
@@ -30,6 +31,12 @@ export const notifications = pgTable(
   },
   (table) => [
     index('notifications_status_run_at_idx').on(table.status, table.runAt),
+    uniqueIndex('notifications_user_event_kind_channel_idx').on(
+      table.userId,
+      table.eventId,
+      table.kind,
+      table.channel
+    ),
   ]
 );
 

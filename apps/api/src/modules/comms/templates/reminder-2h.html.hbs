@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>2-Hour Final Reminder - {{eventTitle}}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
+    .card { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; }
+    .header { background: #ea580c; color: #ffffff; padding: 28px; text-align: center; }
+    .header h1 { margin: 0 0 8px 0; font-size: 22px; font-weight: 700; }
+    .content { padding: 32px; font-size: 15px; }
+    .status-badge { display: inline-block; background: #ffedd5; color: #9a3412; font-weight: 700; padding: 6px 14px; border-radius: 20px; font-size: 13px; margin-bottom: 16px; }
+    .notice-box { background: #fff7ed; border-left: 4px solid #ea580c; padding: 16px; margin: 20px 0; border-radius: 4px; }
+    .btn { display: inline-block; background: #ea580c; color: #ffffff !important; padding: 14px 28px; border-radius: 6px; text-decoration: none; font-weight: 700; font-size: 15px; }
+    .footer { padding: 20px 32px; background: #f8fafc; border-top: 1px solid #e2e8f0; text-align: center; font-size: 13px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1>Event Starts in 2 Hours!</h1>
+      <p>{{eventTitle}}</p>
+    </div>
+    <div class="content">
+      <div style="text-align: center;">
+        <span class="status-badge">⚡ Live Queue Status: {{queueStatus}}</span>
+      </div>
+      
+      <p>Hi <strong>{{studentName}}</strong> (Roll: <strong>{{rollNumber}}</strong>),</p>
+      <p>Doors are opening soon for <strong>{{eventTitle}}</strong> at <strong>{{venueName}}</strong>. Gates open 45 minutes before start.</p>
+      
+      <div class="notice-box">
+        <p style="margin: 0 0 8px 0;"><strong>Active Gates:</strong> {{gateNumbers}}</p>
+        <p style="margin: 0 0 8px 0;"><strong>Identity Verification:</strong> Have your College ID (Roll: {{rollNumber}}) and ticket QR ready.</p>
+        <p style="margin: 0;"><strong>Parking:</strong> {{parkingGuidelines}}</p>
+      </div>
+
+      <p style="text-align: center; margin-top: 28px;">
+        <a href="{{passportUrl}}" class="btn">Launch Your Digital Pass</a>
+      </p>
+    </div>
+    <div class="footer">
+      Eventora Smart Campus Event OS &bull; Campus Safety & Events Committee
+    </div>
+  </div>
+</body>
+</html>

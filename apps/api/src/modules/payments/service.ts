@@ -22,6 +22,7 @@ import { env } from '../../env';
 import { AppError } from '../../lib/app-error';
 import { issueTicket } from '../registrations/ticket-service';
 import { releaseSeat } from '../waitlist/service';
+import { notifyBookingConfirmed } from '../comms/queue';
 
 /**
  * Strict schema for sandbox checkout simulation:
@@ -144,20 +145,9 @@ export async function handleSandboxWebhook(params: {
         balanceAfterPaise: newBalance,
       });
 
-      // 4. Issue ticket and notify participant
+      // 4. Issue ticket and notify participant (EMAIL and WHATSAPP)
       const ticket = await issueTicket(tx, confirmedReg!);
-
-      await tx.insert(notifications).values({
-        userId: registration.userId,
-        kind: NotificationKind.BOOKING_CONFIRMED,
-        channel: NotificationChannel.EMAIL,
-        payload: {
-          eventId: registration.eventId,
-          registrationId: registration.id,
-          ticketToken: ticket.token,
-        },
-        status: 'QUEUED',
-      });
+      await notifyBookingConfirmed(tx, registration.id);
 
       return {
         outcome: 'SUCCEEDED',

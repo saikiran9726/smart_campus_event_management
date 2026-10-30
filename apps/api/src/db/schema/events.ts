@@ -32,6 +32,7 @@ export const events = pgTable(
     slug: text('slug').notNull().unique(),
     description: text('description').notNull(),
     agenda: jsonb('agenda'),
+    notes: jsonb('notes'),
     category: text('category').notNull(),
     posterKey: text('poster_key'),
     venueId: uuid('venue_id').references(() => venues.id, { onDelete: 'set null' }),

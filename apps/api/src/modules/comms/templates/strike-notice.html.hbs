@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Attendance Policy Notice - Strike Issued</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
+    .card { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; }
+    .header { background: #b91c1c; color: #ffffff; padding: 28px; text-align: center; }
+    .header h1 { margin: 0 0 8px 0; font-size: 22px; font-weight: 700; }
+    .content { padding: 32px; font-size: 15px; }
+    .warning-box { background: #fef2f2; border-left: 4px solid #b91c1c; padding: 18px; margin: 20px 0; border-radius: 4px; }
+    .strike-count { font-size: 24px; font-weight: 800; color: #b91c1c; margin: 8px 0; }
+    .footer { padding: 20px 32px; background: #f8fafc; border-top: 1px solid #e2e8f0; text-align: center; font-size: 13px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1>Attendance Policy Notice</h1>
+      <p>Strike Recorded on Campus Account</p>
+    </div>
+    <div class="content">
+      <p>Hi <strong>{{studentName}}</strong> (Roll: <strong>{{rollNumber}}</strong>),</p>
+      <p>A policy strike has been issued on your Eventora campus account due to an unexcused absence/no-show for a registered event.</p>
+      
+      <div class="warning-box">
+        <p style="margin: 0; font-weight: 600; color: #991b1b;">Current Account Status:</p>
+        <div class="strike-count">Active Strikes: {{strikeCount}} / 3</div>
+        <p style="margin: 6px 0 0 0;"><strong>Incident:</strong> {{reason}}</p>
+        {{#if cooldownUntil}}
+        <p style="margin: 6px 0 0 0; color: #b91c1c;"><strong>Penalty Cooldown Active Until:</strong> {{cooldownUntil}}</p>
+        {{/if}}
+      </div>
+
+      <p>During an active penalty cooldown, your account is temporarily restricted from registering for upcoming campus events. Please ensure you cancel registrations at least 4 hours in advance if you cannot attend.</p>
+    </div>
+    <div class="footer">
+      Eventora Smart Campus Event OS &bull; Student Disciplinary & Attendance Board
+    </div>
+  </div>
+</body>
+</html>

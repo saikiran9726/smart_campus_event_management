@@ -27,6 +27,7 @@ import { waitlistRoutes } from './modules/waitlist';
 import { ticketRoutes } from './modules/tickets';
 import { passkeyRoutes } from './modules/passkeys';
 import { gateRoutes } from './modules/gate';
+import { commsAdminRoutes } from './modules/comms/routes';
 
 export function buildServer(opts: FastifyServerOptions = {}): FastifyInstance {
   const server = fastify({
@@ -207,6 +208,7 @@ export function buildServer(opts: FastifyServerOptions = {}): FastifyInstance {
   server.register(ticketRoutes);
   server.register(passkeyRoutes);
   server.register(gateRoutes);
+  server.register(commsAdminRoutes);
 
   return server;
 }

@@ -19,6 +19,7 @@ export * from './modules/strikes';
 export * from './modules/tickets';
 export * from './modules/passkeys';
 export * from './modules/gate';
+export * from './modules/comms';
 export * from './workers';
 export * from './server';
 
