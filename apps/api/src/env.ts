@@ -118,7 +118,7 @@ export function getProductionEnvErrors(e: Record<string, any>): string[] {
   if (!e.PUBLIC_WEB_URL) {
     errors.push('PUBLIC_WEB_URL is required');
   } else if (!String(e.PUBLIC_WEB_URL).startsWith('https://') && e.ALLOW_HTTP_WEB_URL !== true && e.ALLOW_HTTP_WEB_URL !== 'true') {
-    errors.push('PUBLIC_WEB_URL must use https:// in production (except when ALLOW_HTTP_WEB_URL=true for local staging)');
+    errors.push('PUBLIC_WEB_URL must use https:// in production');
   }
   if (e.WHATSAPP_PROVIDER === 'baileys') {
     errors.push('WHATSAPP_PROVIDER cannot be "baileys" in production');

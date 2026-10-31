@@ -32,7 +32,7 @@ eventora/
 ├── scripts/                   # Viva runbook scripts, dev check, and post-deploy smoke tests
 └── docs/                      # Architectural verification checklist, runbook, and deployment guide
     ├── CHECKLIST.md           # Master architectural verification checklist
-    ├── DEPLOYMENT.md          # Step-by-step production hosting guide (Neon, Render, Cloudflare)
+    ├── DEPLOYMENT.md          # Step-by-step production hosting guide (PostgreSQL 16 + Cloudflare)
     └── RUNBOOK.md             # Operations, secret rotation, and incident runbook
 ```
 
@@ -93,7 +93,9 @@ powershell -File scripts/check-dev.ps1
 Eventora is designed for turnkey deployment on modern cloud primitives:
 - Detailed guide: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 - Operational runbook: [docs/RUNBOOK.md](docs/RUNBOOK.md)
-- Infrastructure blueprint: `render.yaml`
+- Docker Compose production stack: [`docker-compose.prod.yml`](docker-compose.prod.yml)
+- Production environment template: [`.env.production.example`](.env.production.example)
+- Nightly PostgreSQL backup script: [`scripts/backup-db.sh`](scripts/backup-db.sh)
 
 ### In-Memory Single Instance Limitation
 > [!IMPORTANT]

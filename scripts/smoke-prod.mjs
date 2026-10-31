@@ -138,15 +138,33 @@ async function main() {
 
   // 10. Strict Transport Security (HSTS) on HTTPS Targets
   await runCheck('Security Headers / HSTS', async () => {
-    const res = await fetch(`${API_URL}/health`);
-    const hsts = res.headers.get('strict-transport-security');
-    const isHttps = API_URL.startsWith('https://');
-    if (isHttps && !hsts) {
-      throw new Error('HSTS header (strict-transport-security) missing on HTTPS production target');
+    const isApiHttps = API_URL.startsWith('https://');
+    const isWebHttps = WEB_URL.startsWith('https://');
+    const details = [];
+
+    if (isApiHttps) {
+      const res = await fetch(`${API_URL}/health`);
+      const hsts = res.headers.get('strict-transport-security');
+      if (!hsts) {
+        throw new Error(`HSTS header (strict-transport-security) missing on HTTPS API target (${API_URL})`);
+      }
+      details.push(`API: ${hsts}`);
     }
-    return isHttps
-      ? `(strict-transport-security: ${hsts})`
-      : `(HTTP target: HSTS optional in non-TLS dev environment)`;
+
+    if (isWebHttps) {
+      const res = await fetch(`${WEB_URL}/`);
+      const hsts = res.headers.get('strict-transport-security');
+      if (!hsts) {
+        throw new Error(`HSTS header (strict-transport-security) missing on HTTPS Web target (${WEB_URL})`);
+      }
+      details.push(`Web: ${hsts}`);
+    }
+
+    if (!isApiHttps && !isWebHttps) {
+      return '(HTTP targets: HSTS optional in non-TLS dev environment)';
+    }
+
+    return `(${details.join(', ')})`;
   });
 
   console.log('\n----------------------------------------------------------');

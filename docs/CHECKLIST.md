@@ -149,9 +149,9 @@ This checklist confirms verification of all domain requirements, security guaran
 
 - [x] **Docker, Hosting & Operational Runbooks:**
   - Multi-stage container image based on `node:22-slim`: [apps/api/Dockerfile](file:///C:/sai%20projects/smartcampus/apps/api/Dockerfile) and [.dockerignore](file:///C:/sai%20projects/smartcampus/.dockerignore)
-  - Render blueprint with single-instance constraint and health check: [render.yaml](file:///C:/sai%20projects/smartcampus/render.yaml)
-  - Complete hosting guide covering Neon, Render, Cloudflare Pages, R2 CORS, Clerk, Turnstile, and Resend: [docs/DEPLOYMENT.md](file:///C:/sai%20projects/smartcampus/docs/DEPLOYMENT.md)
-  - Operations runbook covering rollbacks, secret rotation (`OD_SEAL_SECRET_PREVIOUS`), `pg_dump` backups, and emergency passkey revocation: [docs/RUNBOOK.md](file:///C:/sai%20projects/smartcampus/docs/RUNBOOK.md)
+  - Production Docker Compose stack (PostgreSQL 16, API, Cloudflare Tunnel): [docker-compose.prod.yml](file:///C:/sai%20projects/smartcampus/docker-compose.prod.yml) and [.env.production.example](file:///C:/sai%20projects/smartcampus/.env.production.example)
+  - Complete hosting guide covering PostgreSQL via Docker Compose, Cloudflare Tunnel, Cloudflare Pages, R2 CORS, Clerk, Turnstile, and Resend: [docs/DEPLOYMENT.md](file:///C:/sai%20projects/smartcampus/docs/DEPLOYMENT.md)
+  - Operations runbook covering rollbacks, secret rotation (`OD_SEAL_SECRET_PREVIOUS`), automated nightly `pg_dump` backups, and emergency passkey revocation: [docs/RUNBOOK.md](file:///C:/sai%20projects/smartcampus/docs/RUNBOOK.md) and [scripts/backup-db.sh](file:///C:/sai%20projects/smartcampus/scripts/backup-db.sh)
   - Continuous integration workflows and Dependabot: [.github/workflows/ci.yml](file:///C:/sai%20projects/smartcampus/.github/workflows/ci.yml), [.github/workflows/docker.yml](file:///C:/sai%20projects/smartcampus/.github/workflows/docker.yml), and [.github/dependabot.yml](file:///C:/sai%20projects/smartcampus/.github/dependabot.yml)
   - Post-deploy automated smoke verification script: [scripts/smoke-prod.mjs](file:///C:/sai%20projects/smartcampus/scripts/smoke-prod.mjs) (`pnpm smoke:prod`)
 
