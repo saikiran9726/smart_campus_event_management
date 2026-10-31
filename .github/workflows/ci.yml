@@ -64,6 +64,9 @@ jobs:
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build Shared Package
+        run: pnpm --filter @eventora/shared build
+
       - name: Invariant Gate (Zero Placeholders)
         run: |
           ! git grep -InE "TODO|FIXME|not implemented|rest of implementation" -- apps packages scripts e2e && echo "NO PLACEHOLDERS FOUND"

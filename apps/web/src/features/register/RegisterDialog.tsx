@@ -455,7 +455,7 @@ export const RegisterDialog: React.FC<RegisterDialogProps> = ({
                       {/* SINGLE_SELECT */}
                       {q.type === QuestionType.SINGLE_SELECT && (
                         <div className="space-y-2 pt-1">
-                          {q.options?.map((opt) => (
+                          {q.options?.map((opt: string) => (
                             <label
                               key={opt}
                               className="flex items-center gap-2.5 text-xs text-foreground cursor-pointer"
@@ -477,7 +477,7 @@ export const RegisterDialog: React.FC<RegisterDialogProps> = ({
                       {/* MULTI_SELECT */}
                       {q.type === QuestionType.MULTI_SELECT && (
                         <div className="space-y-2 pt-1">
-                          {q.options?.map((opt) => {
+                          {q.options?.map((opt: string) => {
                             const current = (answers[q.id] as string[]) || [];
                             const isChecked = current.includes(opt);
                             return (
