@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, sql } from 'drizzle-orm';
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import {
   ChannelKind,
@@ -145,7 +145,51 @@ export async function clubRoutes(server: FastifyInstance): Promise<void> {
     return reply.status(200).send({ items, clubs: items });
   });
 
-  // 3. Get Club by Slug
+  // 3. Get My Clubs (Authenticated user's club memberships)
+  server.get(
+    '/clubs/me',
+    { preHandler: [requireAuth] },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const currentUser = request.user!;
+
+      // Global ADMIN has access across all clubs with role ADMIN
+      if (currentUser.role === UserRole.ADMIN) {
+        const allClubs = await db
+          .select({
+            id: clubs.id,
+            name: clubs.name,
+            slug: clubs.slug,
+            description: clubs.description,
+          })
+          .from(clubs)
+          .orderBy(asc(clubs.name));
+
+        const mapped = allClubs.map((c) => ({
+          ...c,
+          role: ClubMemberRole.ADMIN,
+        }));
+
+        return reply.status(200).send({ clubs: mapped, items: mapped });
+      }
+
+      const memberships = await db
+        .select({
+          id: clubs.id,
+          name: clubs.name,
+          slug: clubs.slug,
+          description: clubs.description,
+          role: clubMembers.role,
+        })
+        .from(clubMembers)
+        .innerJoin(clubs, eq(clubMembers.clubId, clubs.id))
+        .where(eq(clubMembers.userId, currentUser.id))
+        .orderBy(asc(clubs.name));
+
+      return reply.status(200).send({ clubs: memberships, items: memberships });
+    }
+  );
+
+  // 4. Get Club by Slug
   server.get('/clubs/:slug', async (request: FastifyRequest, reply: FastifyReply) => {
     const { slug } = request.params as { slug: string };
 
@@ -291,11 +335,22 @@ export async function clubRoutes(server: FastifyInstance): Promise<void> {
     }
   );
 
-  // 7. List Members
+  // 8. List Members
   server.get(
     '/clubs/:id/members',
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { id } = request.params as { id: string };
+
+      // Verify club exists
+      const [club] = await db
+        .select({ id: clubs.id })
+        .from(clubs)
+        .where(eq(clubs.id, id))
+        .limit(1);
+
+      if (!club) {
+        throw new AppError('NOT_FOUND', `Club '${id}' not found.`, 404);
+      }
 
       const members = await db
         .select({

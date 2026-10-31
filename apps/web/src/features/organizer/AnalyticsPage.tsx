@@ -36,6 +36,10 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
 import { toast } from '@/components/ui/toast';
+import { useActiveClub } from './ActiveClubContext';
+import { ClubSwitcher } from './ClubSwitcher';
+import { ZeroClubsEmptyState } from './ZeroClubsEmptyState';
+import { AlertTriangle, RotateCcw } from 'lucide-react';
 
 interface AnalyticsData {
   eventId: string;
@@ -88,63 +92,11 @@ interface AnalyticsData {
 
 const DONUT_COLORS = ['#10B981', '#F43F5E', '#F59E0B']; // Green, Red, Yellow
 
-const DEFAULT_ANALYTICS: AnalyticsData = {
-  eventId: 'evt-101',
-  funnel: {
-    registered: 240,
-    confirmed: 220,
-    checkedIn: 195,
-    noShow: 25,
-    waitlisted: 45,
-    cancellations: 20,
-    conversionRate: 88.6,
-  },
-  arrivalCurve: [
-    { bucket: '09:00 AM', count: 18 },
-    { bucket: '09:05 AM', count: 32 },
-    { bucket: '09:10 AM', count: 58 },
-    { bucket: '09:15 AM', count: 42 },
-    { bucket: '09:20 AM', count: 25 },
-    { bucket: '09:25 AM', count: 20 },
-  ],
-  scanStats: {
-    green: 195,
-    red: 6,
-    yellow: 12,
-    duplicateAttempts: 12,
-  },
-  redemptions: {
-    mealsCount: 178,
-    mealsPct: 91.2,
-    kitsCount: 190,
-    kitsPct: 97.4,
-  },
-  demographics: [
-    { group: 'Computer Science', count: 98, displayLabel: '98' },
-    { group: 'Electronics (ECE)', count: 64, displayLabel: '64' },
-    { group: 'Mechanical', count: 22, displayLabel: '22' },
-    { group: 'Biotechnology', count: null, displayLabel: 'Fewer than 3' },
-    { group: 'Civil Engineering', count: null, displayLabel: 'Fewer than 3' },
-  ],
-  reviews: {
-    average: 4.8,
-    count: 142,
-    histogram: { 5: 115, 4: 21, 3: 4, 2: 1, 1: 1 },
-  },
-  sandboxRevenue: {
-    totalCollectedPaise: 4500000,
-    netPaise: 4500000,
-  },
-  clubTrends: [
-    { eventTitle: 'Fall Hackathon', registered: 180, checkedIn: 155, rating: 4.7 },
-    { eventTitle: 'Robotics Bootcamp', registered: 120, checkedIn: 110, rating: 4.9 },
-    { eventTitle: 'AI Mesh Summit', registered: 240, checkedIn: 195, rating: 4.8 },
-  ],
-};
-
 export const AnalyticsPage: React.FC = () => {
-  const { eventId = 'evt-101' } = useParams<{ eventId?: string }>();
+  const { eventId } = useParams<{ eventId?: string }>();
   const navigate = useNavigate();
+  const { activeClubId, clubs, isLoading: isLoadingClubs } = useActiveClub();
+  const clubId = activeClubId;
 
   // Export State
   const [exportFormat, setExportFormat] = useState<'pdf' | 'csv' | 'xlsx'>('pdf');
@@ -153,25 +105,27 @@ export const AnalyticsPage: React.FC = () => {
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState<number | null>(null);
 
-  // Club ID for NAAC reports
-  const clubId = '11111111-1111-1111-1111-111111111111';
-
   // 1. Fetch Event Analytics
-  const { data: analytics, isLoading } = useQuery<AnalyticsData>({
+  const {
+    data: analytics,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery<AnalyticsData>({
     queryKey: ['events', eventId, 'analytics'],
     queryFn: async () => {
-      try {
-        const res = await api.get<AnalyticsData>(`/events/${eventId}/analytics`);
-        if (res && res.funnel) return res;
-      } catch {
-        // High-fidelity fallback fixture matching backend schema
-      }
-      return DEFAULT_ANALYTICS;
+      return await api.get<AnalyticsData>(`/events/${eventId}/analytics`);
     },
+    enabled: !!eventId && !!clubId,
   });
 
   // Handle NAAC / NBA Export
   const handleExportNaac = async () => {
+    if (!clubId) {
+      toast.error('No active club selected.');
+      return;
+    }
     setIsExporting(true);
     setExportProgress(20);
 
@@ -199,7 +153,40 @@ export const AnalyticsPage: React.FC = () => {
     }
   };
 
-  if (isLoading || !analytics) {
+  if (isLoadingClubs) {
+    return (
+      <div className="container max-w-6xl py-12 px-4 mx-auto animate-pulse space-y-4">
+        <div className="h-8 w-64 bg-muted rounded" />
+        <div className="h-64 bg-muted rounded-xl" />
+      </div>
+    );
+  }
+
+  if (!clubId) {
+    return (
+      <div className="container max-w-6xl py-8 px-4 mx-auto">
+        <ZeroClubsEmptyState />
+      </div>
+    );
+  }
+
+  if (!eventId) {
+    return (
+      <div className="container max-w-6xl py-12 px-4 mx-auto space-y-4">
+        <div className="flex items-center gap-3 border-b border-border/60 pb-6">
+          <Button variant="ghost" size="sm" onClick={() => navigate('/organizer')} className="h-8 w-8 p-0">
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold">Event Analytics</h1>
+            <p className="text-sm text-muted-foreground">Select an event from the organizer dashboard to inspect analytics.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoading) {
     return (
       <div className="container max-w-6xl py-12 px-4 mx-auto animate-pulse space-y-4">
         <div className="h-8 w-64 bg-muted rounded" />
@@ -208,6 +195,32 @@ export const AnalyticsPage: React.FC = () => {
           <div className="h-24 bg-muted rounded-xl" />
           <div className="h-24 bg-muted rounded-xl" />
           <div className="h-24 bg-muted rounded-xl" />
+        </div>
+      </div>
+    );
+  }
+
+  if (isError || !analytics) {
+    return (
+      <div className="container max-w-6xl py-12 px-4 mx-auto space-y-4">
+        <div className="flex items-center gap-3 border-b border-border/60 pb-6">
+          <Button variant="ghost" size="sm" onClick={() => navigate('/organizer')} className="h-8 w-8 p-0">
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold">Event Analytics</h1>
+          </div>
+        </div>
+        <div className="p-6 rounded-xl border border-destructive/20 bg-destructive/10 text-destructive space-y-3">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5" />
+            <h2 className="font-semibold">Unable to load event analytics</h2>
+          </div>
+          <p className="text-sm">{(error as any)?.message || 'An error occurred while loading analytics.'}</p>
+          <Button size="sm" variant="outline" onClick={() => refetch()} className="gap-2">
+            <RotateCcw className="h-4 w-4" />
+            Retry
+          </Button>
         </div>
       </div>
     );
@@ -230,14 +243,6 @@ export const AnalyticsPage: React.FC = () => {
         displayLabel: 'Fewer than 3',
       });
     }
-  }
-
-  if (rawDemoList.length === 0) {
-    rawDemoList = [
-      { group: 'Computer Science', count: 98, displayLabel: '98' },
-      { group: 'Electronics (ECE)', count: 64, displayLabel: '64' },
-      { group: 'Biotechnology', count: null, displayLabel: 'Fewer than 3' },
-    ];
   }
 
   const demographicsChartData = rawDemoList.map((d) => ({
@@ -287,6 +292,7 @@ export const AnalyticsPage: React.FC = () => {
 
         {/* NAAC/NBA Export Action */}
         <div className="flex items-center gap-2 flex-wrap">
+          <ClubSwitcher />
           <Select
             value={exportFormat}
             onValueChange={(val: any) => setExportFormat(val)}

@@ -8,6 +8,7 @@ import { ProposalWizardPage } from '@/features/proposals/ProposalWizardPage';
 import { FacultyDecisionPage } from '@/features/faculty/FacultyDecisionPage';
 import { GateOps } from '@/features/organizer/GateOps';
 import { AnalyticsPage } from '@/features/organizer/AnalyticsPage';
+import { ActiveClubProvider } from '@/features/organizer/ActiveClubContext';
 import { api } from '@/lib/api';
 import { QuestionType } from '@eventora/shared';
 
@@ -50,6 +51,7 @@ describe('Organizer & Faculty UI Suite (Prompt 15)', () => {
   beforeEach(() => {
     queryClient = createTestQueryClient();
     vi.clearAllMocks();
+    window.HTMLElement.prototype.scrollIntoView = vi.fn();
   });
 
   afterEach(() => {
@@ -209,7 +211,9 @@ describe('Organizer & Faculty UI Suite (Prompt 15)', () => {
       render(
         <QueryClientProvider client={queryClient}>
           <MemoryRouter>
-            <ProposalWizardPage />
+            <ActiveClubProvider>
+              <ProposalWizardPage />
+            </ActiveClubProvider>
           </MemoryRouter>
         </QueryClientProvider>
       );
@@ -219,6 +223,12 @@ describe('Organizer & Faculty UI Suite (Prompt 15)', () => {
       fireEvent.change(titleInput, { target: { value: 'Quantum Computing Workshop' } });
       const descInput = screen.getByTestId('input-proposal-desc');
       fireEvent.change(descInput, { target: { value: 'Deep dive into Qubits and quantum gates' } });
+
+      // Wait for clubs to load so clubId is auto-populated before clicking Next
+      await waitFor(() => {
+        expect(screen.getByTestId('select-hosting-club')).toBeInTheDocument();
+        expect(screen.getByText(/Computer Science Society/)).toBeInTheDocument();
+      });
       fireEvent.click(screen.getByTestId('btn-step-1-next'));
 
       // Step 2: fill dates, select venue and click Next
@@ -447,11 +457,34 @@ describe('Organizer & Faculty UI Suite (Prompt 15)', () => {
     it('renders demographics with "Fewer than 3" suppression and triggers correct export URL', async () => {
       const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
 
+      // Provide clubs/me so ActiveClubProvider has an active club
+      vi.spyOn(api, 'get').mockImplementation(async (url: string) => {
+        if (url.includes('/clubs/me')) {
+          return { clubs: [{ id: 'club-analytics', name: 'Analytics Club', role: 'OWNER' }] };
+        }
+        if (url.includes('/analytics')) {
+          return {
+            eventId: 'evt-101',
+            funnel: { registered: 80, confirmed: 70, checkedIn: 60, noShow: 10, waitlisted: 5, cancellations: 5, conversionRate: 0.75 },
+            arrivalCurve: [],
+            scanStats: { green: 60, red: 2, yellow: 1, duplicateAttempts: 0 },
+            redemptions: { mealsCount: 50, mealsPct: 83, kitsCount: 40, kitsPct: 67 },
+            demographics: [
+              { group: 'CSE', count: 45, displayLabel: '45' },
+              { group: 'ECE', count: null, displayLabel: 'Fewer than 3' },
+            ],
+            reviews: { average: 4.5, count: 20, histogram: { 5: 12, 4: 6, 3: 2 } },
+            sandboxRevenue: { totalCollectedPaise: 100000, netPaise: 95000 },
+          };
+        }
+        return {};
+      });
+
       render(
         <QueryClientProvider client={queryClient}>
           <MemoryRouter initialEntries={['/organizer/events/evt-101/analytics']}>
             <Routes>
-              <Route path="/organizer/events/:eventId/analytics" element={<AnalyticsPage />} />
+              <Route path="/organizer/events/:eventId/analytics" element={<ActiveClubProvider><AnalyticsPage /></ActiveClubProvider>} />
             </Routes>
           </MemoryRouter>
         </QueryClientProvider>

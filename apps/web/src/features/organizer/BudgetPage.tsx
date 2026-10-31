@@ -13,8 +13,12 @@ import {
   Receipt,
   FileText,
   ExternalLink,
+  RotateCcw,
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useActiveClub } from './ActiveClubContext';
+import { ClubSwitcher } from './ClubSwitcher';
+import { ZeroClubsEmptyState } from './ZeroClubsEmptyState';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -56,8 +60,8 @@ interface BudgetData {
 export const BudgetPage: React.FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-
-  const [clubId, setClubId] = useState<string>('11111111-1111-1111-1111-111111111111');
+  const { activeClubId, clubs, isLoading: isLoadingClubs } = useActiveClub();
+  const clubId = activeClubId;
 
   // Add Expense Modal State
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
@@ -68,42 +72,17 @@ export const BudgetPage: React.FC = () => {
   const [receiptKey, setReceiptKey] = useState('');
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 
-  // 1. Fetch Clubs
-  const { data: clubs } = useQuery<{ clubs: Array<{ id: string; name: string }> }>({
-    queryKey: ['clubs', 'me'],
-    queryFn: async () => {
-      try {
-        const res = await api.get<{ clubs: Array<{ id: string; name: string }> }>('/clubs/me');
-        return res;
-      } catch {
-        return { clubs: [{ id: '11111111-1111-1111-1111-111111111111', name: 'Computer Science Society' }] };
-      }
-    },
-  });
-
-  // 2. Fetch Club Budget
-  const { data: budgetData, isLoading } = useQuery<BudgetData>({
+  // Fetch Club Budget
+  const {
+    data: budgetData,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery<BudgetData>({
     queryKey: ['clubs', clubId, 'budget'],
     queryFn: async () => {
-      try {
-        return await api.get<BudgetData>(`/clubs/${clubId}/budget`);
-      } catch {
-        return {
-          clubId,
-          totalAllocatedPaise: 25000000, // ₹250,000
-          totalSpentPaise: 16500000,     // ₹165,000
-          totalRemainingPaise: 8500000,
-          allocations: [
-            { id: 'alloc-1', category: 'Venue & Logistics', allocatedPaise: 10000000, spentPaise: 8500000, remainingPaise: 1500000 },
-            { id: 'alloc-2', category: 'Catering & Meals', allocatedPaise: 8000000, spentPaise: 6000000, remainingPaise: 2000000 },
-            { id: 'alloc-3', category: 'Prizes & Swag', allocatedPaise: 7000000, spentPaise: 2000000, remainingPaise: 5000000 },
-          ],
-          expenses: [
-            { id: 'exp-1', allocationId: 'alloc-1', category: 'Venue & Logistics', description: 'Auditorium AC & electrical deposit', amountPaise: 5000000, receiptKey: 'receipts/rec-01.pdf', facultySignedAt: new Date().toISOString(), createdAt: new Date().toISOString() },
-            { id: 'exp-2', allocationId: 'alloc-2', category: 'Catering & Meals', description: 'Volunteer meal box lunch (60 units)', amountPaise: 3500000, receiptKey: 'receipts/rec-02.pdf', facultySignedAt: null, createdAt: new Date().toISOString() },
-          ],
-        };
-      }
+      return await api.get<BudgetData>(`/clubs/${clubId}/budget`);
     },
     enabled: !!clubId,
   });
@@ -180,6 +159,62 @@ export const BudgetPage: React.FC = () => {
     },
   });
 
+  if (isLoadingClubs) {
+    return (
+      <div className="container max-w-6xl py-12 px-4 mx-auto space-y-4">
+        <div className="h-8 w-64 bg-muted animate-pulse rounded" />
+        <div className="h-64 bg-muted animate-pulse rounded-xl" />
+      </div>
+    );
+  }
+
+  if (!clubId) {
+    return (
+      <div className="container max-w-6xl py-8 px-4 mx-auto">
+        <ZeroClubsEmptyState />
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="container max-w-6xl py-12 px-4 mx-auto space-y-4">
+        <div className="h-8 w-64 bg-muted animate-pulse rounded" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="h-32 bg-muted animate-pulse rounded-xl" />
+          <div className="h-32 bg-muted animate-pulse rounded-xl" />
+          <div className="h-32 bg-muted animate-pulse rounded-xl" />
+        </div>
+      </div>
+    );
+  }
+
+  if (isError || !budgetData) {
+    return (
+      <div className="container max-w-6xl py-12 px-4 mx-auto space-y-4">
+        <div className="flex items-center gap-3 border-b border-border/60 pb-6">
+          <Button variant="ghost" size="sm" onClick={() => navigate('/organizer')} className="h-8 w-8 p-0">
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold">Club Budget & Receipts Ledger</h1>
+          </div>
+        </div>
+        <div className="p-6 rounded-xl border border-destructive/20 bg-destructive/10 text-destructive space-y-3">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5" />
+            <h2 className="font-semibold">Unable to load club budget</h2>
+          </div>
+          <p className="text-sm">{(error as any)?.message || 'An error occurred while loading the budget.'}</p>
+          <Button size="sm" variant="outline" onClick={() => refetch()} className="gap-2">
+            <RotateCcw className="h-4 w-4" />
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   const allocations = budgetData?.allocations ?? [];
   const expenses = budgetData?.expenses ?? [];
 
@@ -208,6 +243,7 @@ export const BudgetPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          <ClubSwitcher />
           <Button
             variant="outline"
             size="sm"

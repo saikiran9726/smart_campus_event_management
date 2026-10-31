@@ -98,18 +98,12 @@ export const TeamPanel: React.FC<TeamPanelProps> = ({
         title: 'Team Created!',
         description: `Invite teammates using code: ${res.team.inviteCode}`,
       });
-    } catch {
-      // Mock create for preview/test
-      const mockTeam: TeamData = {
-        id: 'team_demo_1',
-        name: createTeamName,
-        inviteCode: 'TEAM-AI2026',
-        isLocked: false,
-        minSize: minTeamSize,
-        maxSize: maxTeamSize,
-        members: [{ id: 'usr_me', name: 'You (Team Lead)', role: 'LEADER' }],
-      };
-      setTeam(mockTeam);
+    } catch (err: any) {
+      toast({
+        title: 'Error creating team',
+        description: err?.message || 'Failed to create team. Please try again.',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -126,20 +120,12 @@ export const TeamPanel: React.FC<TeamPanelProps> = ({
         title: 'Joined Team!',
         description: `Successfully joined ${res.team.name}`,
       });
-    } catch {
-      const mockTeam: TeamData = {
-        id: 'team_joined',
-        name: 'Autonomous Hackers',
-        inviteCode: joinCode.toUpperCase(),
-        isLocked: false,
-        minSize: minTeamSize,
-        maxSize: maxTeamSize,
-        members: [
-          { id: 'usr_leader', name: 'Sarah Lead', role: 'LEADER' },
-          { id: 'usr_me', name: 'You (Member)', role: 'MEMBER' },
-        ],
-      };
-      setTeam(mockTeam);
+    } catch (err: any) {
+      toast({
+        title: 'Error joining team',
+        description: err?.message || 'Invalid invite code or failed to join team.',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -157,10 +143,11 @@ export const TeamPanel: React.FC<TeamPanelProps> = ({
         title: 'Project Submitted!',
         description: 'Your project evaluation entry has been recorded.',
       });
-    } catch {
+    } catch (err: any) {
       toast({
-        title: 'Project Submitted (Test Mode)',
-        description: 'Your project has been recorded for judging.',
+        title: 'Submission Failed',
+        description: err?.message || 'Failed to submit project. Please try again.',
+        variant: 'destructive',
       });
     } finally {
       setIsSubmitting(false);

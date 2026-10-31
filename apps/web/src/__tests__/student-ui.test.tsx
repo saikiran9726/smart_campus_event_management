@@ -60,7 +60,31 @@ describe('Student UI Comprehensive Flow Suite', () => {
 
   describe('1. Discovery Feed: Skeletons, Cards & Empty State with Reset', () => {
     it('renders event cards and handles search empty state with working reset button', async () => {
-      vi.spyOn(api, 'get').mockRejectedValue(new Error('Network offline'));
+      const mockEvent = {
+        id: 'evt-hackathon-2026',
+        slug: 'autonomous-ai-hackathon-2026',
+        title: 'Autonomous AI Hackathon 2026',
+        status: 'PUBLISHED',
+        startAt: new Date(Date.now() + 86400000).toISOString(),
+        endAt: new Date(Date.now() + 2 * 86400000).toISOString(),
+        venue: 'Main Auditorium',
+        category: 'Hackathon',
+        capacity: 200,
+        seatsRemaining: 50,
+        pricePaise: 0,
+        clubName: 'CS Society',
+        coverImageUrl: null,
+        tags: [],
+      };
+
+      // Return events when no search param, empty when search present
+      vi.spyOn(api, 'get').mockImplementation(async (url: string) => {
+        const hasSearch = (url as string).includes('search=');
+        if (hasSearch) {
+          return { events: [], nextCursor: null };
+        }
+        return { events: [mockEvent], nextCursor: null };
+      });
 
       render(
         <QueryClientProvider client={queryClient}>
@@ -82,7 +106,7 @@ describe('Student UI Comprehensive Flow Suite', () => {
       // After debounce, empty state appears
       await waitFor(() => {
         expect(screen.getByText('No Campus Events Found')).toBeInTheDocument();
-      });
+      }, { timeout: 2000 });
 
       // Click "Reset Filters"
       const resetBtn = screen.getByRole('button', { name: /reset filters/i });

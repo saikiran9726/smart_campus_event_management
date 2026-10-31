@@ -13,8 +13,11 @@ import {
   Clock,
   Users,
   ShieldAlert,
+  RefreshCw,
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useActiveClub } from '@/features/organizer/ActiveClubContext';
+import { ZeroClubsEmptyState } from '@/features/organizer/ZeroClubsEmptyState';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -55,11 +58,28 @@ export const ProposalWizardPage: React.FC = () => {
   const navigate = useNavigate();
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
 
+  const {
+    clubs,
+    activeClubId,
+    setActiveClubId,
+    isLoading: isLoadingClubs,
+    refetchClubs,
+  } = useActiveClub();
+
   // Form State
-  const [clubId, setClubId] = useState('');
+  const [clubId, setClubId] = useState<string>('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [expectedAttendance, setExpectedAttendance] = useState<number>(100);
+
+  // Sync selected clubId with active club
+  useEffect(() => {
+    if (activeClubId) {
+      setClubId(activeClubId);
+    } else if (clubs.length > 0 && clubs[0]) {
+      setClubId(clubs[0].id);
+    }
+  }, [activeClubId, clubs]);
 
   // Date and Venue
   const [startAt, setStartAt] = useState('');
@@ -76,46 +96,23 @@ export const ProposalWizardPage: React.FC = () => {
     details?: any;
   } | null>(null);
 
-  // 1. Fetch Clubs (user's clubs)
-  const { data: clubsData } = useQuery({
-    queryKey: ['clubs', 'me'],
-    queryFn: async () => {
-      try {
-        const res = await api.get<{ clubs: Array<{ id: string; name: string }> }>('/clubs/me');
-        return res.clubs;
-      } catch {
-        return [
-          { id: '11111111-1111-1111-1111-111111111111', name: 'Computer Science Society' },
-          { id: '22222222-2222-2222-2222-222222222222', name: 'Robotics & AI Club' },
-        ];
-      }
-    },
-  });
-
-  useEffect(() => {
-    if (clubsData && clubsData.length > 0 && !clubId && clubsData[0]?.id) {
-      setClubId(clubsData[0].id);
-    }
-  }, [clubsData, clubId]);
-
-  // 2. Fetch Venues
-  const { data: venuesData } = useQuery({
+  // 1. Fetch Real Venues
+  const {
+    data: venues = [],
+    isLoading: isLoadingVenues,
+    isError: isVenuesError,
+    refetch: refetchVenues,
+  } = useQuery<VenueItem[]>({
     queryKey: ['venues'],
     queryFn: async () => {
-      try {
-        const res = await api.get<{ venues: VenueItem[] }>('/venues');
-        return res.venues;
-      } catch {
-        return [
-          { id: '33333333-3333-3333-3333-333333333333', name: 'Main Auditorium', capacity: 500, locationText: 'Campus Center Block A' },
-          { id: '44444444-4444-4444-4444-444444444444', name: 'Seminar Hall 1', capacity: 150, locationText: 'Academic Block B, 2nd Floor' },
-          { id: '55555555-5555-5555-5555-555555555555', name: 'Tech Amphitheatre', capacity: 300, locationText: 'Innovation Quad' },
-        ];
-      }
+      const res = await api.get<{ venues?: VenueItem[]; items?: VenueItem[] }>('/venues', {
+        showToast: false,
+      });
+      return res.venues || res.items || [];
     },
   });
 
-  // 3. Live Venue Availability Query
+  // 2. Live Venue Availability Query
   const { data: venueAvailability, isFetching: isCheckingVenue } = useQuery<VenueAvailabilityResponse>({
     queryKey: ['venues', 'availability', selectedVenueId, startAt, endAt],
     queryFn: async () => {
@@ -126,12 +123,18 @@ export const ProposalWizardPage: React.FC = () => {
     enabled: !!selectedVenueId && !!startAt && !!endAt && new Date(endAt) > new Date(startAt),
   });
 
-  // 4. Live AV Resources Availability Query
-  const { data: avResourcesData, isFetching: isCheckingAv } = useQuery<{ items: AvAvailabilityItem[] }>({
+  // 3. Live AV Resources Availability Query
+  const {
+    data: avResourcesData,
+    isLoading: isLoadingAv,
+    isError: isAvError,
+    refetch: refetchAv,
+  } = useQuery<{ items: AvAvailabilityItem[] }>({
     queryKey: ['av', 'availability', startAt, endAt],
     queryFn: async () => {
       return await api.get<{ items: AvAvailabilityItem[] }>(
-        `/av/availability?from=${encodeURIComponent(new Date(startAt).toISOString())}&to=${encodeURIComponent(new Date(endAt).toISOString())}`
+        `/av/availability?from=${encodeURIComponent(new Date(startAt).toISOString())}&to=${encodeURIComponent(new Date(endAt).toISOString())}`,
+        { showToast: false }
       );
     },
     enabled: !!startAt && !!endAt && new Date(endAt) > new Date(startAt),
@@ -168,54 +171,89 @@ export const ProposalWizardPage: React.FC = () => {
       if (code === 'VENUE_CONFLICT') {
         toast.error('Venue Conflict: The selected hall is booked during this window.');
       } else if (code === 'AV_CONFLICT') {
-        toast.error('AV Equipment Conflict: Requested equipment exceeds available units.');
+        toast.error('AV Conflict: Insufficient equipment available for this window.');
       } else {
         toast.error(msg);
       }
     },
   });
 
-  const selectedVenue = venuesData?.find((v) => v.id === selectedVenueId);
-
-  return (
-    <div className="container max-w-3xl py-8 px-4 mx-auto space-y-6">
-      {/* Top Header */}
-      <div className="flex items-center gap-3">
+  if (!isLoadingClubs && clubs.length === 0) {
+    return (
+      <div className="container max-w-3xl py-8 px-4 mx-auto space-y-6">
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => navigate('/organizer/proposals')}
-          className="h-8 w-8 p-0"
+          onClick={() => navigate('/organizer')}
+          className="gap-1.5 text-xs text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
+          <span>Back to Organizer Studio</span>
         </Button>
+        <ZeroClubsEmptyState onRetry={refetchClubs} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="container max-w-3xl py-8 px-4 sm:px-8 mx-auto space-y-6">
+      {/* Top Header */}
+      <div className="flex items-center justify-between border-b border-border/60 pb-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Create Event Proposal</h1>
-          <p className="text-sm text-muted-foreground">
-            Multi-step campus proposal with real-time venue and AV collision detection.
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate('/organizer/proposals')}
+            className="mb-2 -ml-2 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span>Cancel Proposal</span>
+          </Button>
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
+            Event Proposal Wizard
+          </h1>
+          <p className="text-xs sm:text-sm text-muted-foreground">
+            Multi-stage proposal flow with real-time venue calendar locks and AV allocation.
           </p>
+        </div>
+
+        <div className="text-right">
+          <Badge variant="outline" className="text-xs font-mono font-bold">
+            Step {step} of 4
+          </Badge>
         </div>
       </div>
 
-      {/* Stepper Progress */}
-      <div className="grid grid-cols-4 gap-2 text-center">
-        {[
-          { num: 1, label: 'Event Info' },
-          { num: 2, label: 'Venue & Time' },
-          { num: 3, label: 'AV Resources' },
-          { num: 4, label: 'Review & Submit' },
-        ].map((s) => (
-          <div
-            key={s.num}
-            className={`border-b-2 pb-2 text-xs font-medium transition-colors ${
-              step >= s.num
-                ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400'
-                : 'border-border text-muted-foreground'
-            }`}
-          >
-            Step {s.num}: {s.label}
-          </div>
-        ))}
+      {/* Progress Stepper */}
+      <div className="grid grid-cols-4 gap-2 text-center text-xs font-medium">
+        <div
+          className={`p-2 rounded-lg border ${
+            step >= 1 ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/30 font-bold text-indigo-700 dark:text-indigo-400' : 'border-border text-muted-foreground'
+          }`}
+        >
+          1. Basic Info
+        </div>
+        <div
+          className={`p-2 rounded-lg border ${
+            step >= 2 ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/30 font-bold text-indigo-700 dark:text-indigo-400' : 'border-border text-muted-foreground'
+          }`}
+        >
+          2. Venue & Time
+        </div>
+        <div
+          className={`p-2 rounded-lg border ${
+            step >= 3 ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/30 font-bold text-indigo-700 dark:text-indigo-400' : 'border-border text-muted-foreground'
+          }`}
+        >
+          3. AV Requests
+        </div>
+        <div
+          className={`p-2 rounded-lg border ${
+            step >= 4 ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/30 font-bold text-indigo-700 dark:text-indigo-400' : 'border-border text-muted-foreground'
+          }`}
+        >
+          4. Review
+        </div>
       </div>
 
       {/* Step 1: Event Info */}
@@ -230,14 +268,20 @@ export const ProposalWizardPage: React.FC = () => {
           <CardContent className="space-y-4">
             <div className="space-y-1">
               <Label htmlFor="club-select">Hosting Club</Label>
-              <Select value={clubId} onValueChange={setClubId}>
-                <SelectTrigger id="club-select">
+              <Select
+                value={clubId}
+                onValueChange={(val) => {
+                  setClubId(val);
+                  setActiveClubId(val);
+                }}
+              >
+                <SelectTrigger id="club-select" data-testid="select-hosting-club">
                   <SelectValue placeholder="Select Club" />
                 </SelectTrigger>
                 <SelectContent>
-                  {(clubsData ?? []).map((c) => (
+                  {clubs.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
-                      {c.name}
+                      {c.name} ({c.role})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -291,6 +335,10 @@ export const ProposalWizardPage: React.FC = () => {
                   toast.error('Title and description are required.');
                   return;
                 }
+                if (!clubId) {
+                  toast.error('Please select a valid hosting club.');
+                  return;
+                }
                 setStep(2);
               }}
               className="gap-2"
@@ -339,43 +387,63 @@ export const ProposalWizardPage: React.FC = () => {
 
             <div className="space-y-1">
               <Label>Select Venue</Label>
-              <div className="grid grid-cols-1 gap-2 pt-1">
-                {(venuesData ?? []).map((v) => {
-                  const isUnderCapacity = v.capacity < expectedAttendance;
-                  const isSelected = selectedVenueId === v.id;
-                  return (
-                    <button
-                      key={v.id}
-                      type="button"
-                      onClick={() => setSelectedVenueId(v.id)}
-                      className={`flex items-center justify-between p-3.5 rounded-xl border text-left transition-all ${
-                        isSelected
-                          ? 'border-indigo-600 bg-indigo-50/40 dark:border-indigo-400 dark:bg-indigo-950/20'
-                          : 'border-border hover:border-border/80'
-                      }`}
-                      data-testid={`venue-option-${v.id}`}
-                    >
-                      <div className="space-y-1">
-                        <p className="font-semibold text-sm">{v.name}</p>
-                        <p className="text-xs text-muted-foreground flex items-center gap-1">
-                          <MapPin className="h-3 w-3" />
-                          {v.locationText}
-                        </p>
-                      </div>
-                      <div className="text-right space-y-1">
-                        <Badge variant={isUnderCapacity ? 'outline' : 'secondary'} className="tnum">
-                          Capacity: {v.capacity}
-                        </Badge>
-                        {isUnderCapacity && (
-                          <p className="text-[11px] text-amber-600 dark:text-amber-400">
-                            Below expected ({expectedAttendance})
+              {isVenuesError ? (
+                <div className="p-4 rounded-xl border border-destructive/30 bg-destructive/5 text-center space-y-2" data-testid="venues-error-state">
+                  <AlertCircle className="h-6 w-6 text-destructive mx-auto" />
+                  <p className="text-xs text-destructive font-medium">Failed to load verified campus venues.</p>
+                  <Button size="sm" variant="outline" onClick={() => refetchVenues()} className="gap-1.5 h-8 text-xs">
+                    <RefreshCw className="h-3 w-3" />
+                    <span>Retry</span>
+                  </Button>
+                </div>
+              ) : isLoadingVenues ? (
+                <div className="space-y-2">
+                  <div className="h-16 rounded-xl bg-muted/40 animate-pulse border border-border" />
+                  <div className="h-16 rounded-xl bg-muted/40 animate-pulse border border-border" />
+                </div>
+              ) : venues.length === 0 ? (
+                <div className="p-6 rounded-xl border border-border text-center text-xs text-muted-foreground" data-testid="venues-empty-state">
+                  No verified campus venues configured in the university registry.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-2 pt-1">
+                  {venues.map((v) => {
+                    const isUnderCapacity = v.capacity < expectedAttendance;
+                    const isSelected = selectedVenueId === v.id;
+                    return (
+                      <button
+                        key={v.id}
+                        type="button"
+                        onClick={() => setSelectedVenueId(v.id)}
+                        className={`flex items-center justify-between p-3.5 rounded-xl border text-left transition-all ${
+                          isSelected
+                            ? 'border-indigo-600 bg-indigo-50/40 dark:border-indigo-400 dark:bg-indigo-950/20'
+                            : 'border-border hover:border-border/80'
+                        }`}
+                        data-testid={`venue-option-${v.id}`}
+                      >
+                        <div className="space-y-1">
+                          <p className="font-semibold text-sm">{v.name}</p>
+                          <p className="text-xs text-muted-foreground flex items-center gap-1">
+                            <MapPin className="h-3 w-3" />
+                            {v.locationText}
                           </p>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+                        </div>
+                        <div className="text-right space-y-1">
+                          <Badge variant={isUnderCapacity ? 'outline' : 'secondary'} className="tnum">
+                            Capacity: {v.capacity}
+                          </Badge>
+                          {isUnderCapacity && (
+                            <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                              Below expected ({expectedAttendance})
+                            </p>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Live Venue Availability Banner */}
@@ -451,49 +519,69 @@ export const ProposalWizardPage: React.FC = () => {
               Equipment reservations are verified against campus inventory in real time. Units in use by other approved events are deducted automatically.
             </p>
 
-            <div className="space-y-3">
-              {(avResourcesData?.items ?? []).map((item) => {
-                const requested = avRequests[item.id] ?? 0;
-                const isOverLimit = requested > item.remainingQuantity;
+            {isAvError ? (
+              <div className="p-4 rounded-xl border border-destructive/30 bg-destructive/5 text-center space-y-2" data-testid="av-error-state">
+                <AlertCircle className="h-6 w-6 text-destructive mx-auto" />
+                <p className="text-xs text-destructive font-medium">Failed to load live AV equipment inventory.</p>
+                <Button size="sm" variant="outline" onClick={() => refetchAv()} className="gap-1.5 h-8 text-xs">
+                  <RefreshCw className="h-3 w-3" />
+                  <span>Retry</span>
+                </Button>
+              </div>
+            ) : isLoadingAv ? (
+              <div className="space-y-2">
+                <div className="h-14 rounded-xl bg-muted/40 animate-pulse border border-border" />
+                <div className="h-14 rounded-xl bg-muted/40 animate-pulse border border-border" />
+              </div>
+            ) : (avResourcesData?.items ?? []).length === 0 ? (
+              <p className="text-xs text-muted-foreground p-4 bg-muted/30 rounded-xl text-center">
+                No AV equipment registered for reservation. You can proceed without extra equipment.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {(avResourcesData?.items ?? []).map((item) => {
+                  const requested = avRequests[item.id] ?? 0;
+                  const isOverLimit = requested > item.remainingQuantity;
 
-                return (
-                  <div
-                    key={item.id}
-                    className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-xl border border-border bg-card gap-3"
-                  >
-                    <div>
-                      <p className="font-semibold text-sm">{item.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Kind: {item.kind} · Available: <strong className="tnum">{item.remainingQuantity}</strong> of {item.totalQuantity} total
-                      </p>
-                    </div>
+                  return (
+                    <div
+                      key={item.id}
+                      className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-xl border border-border bg-card gap-3"
+                    >
+                      <div>
+                        <p className="font-semibold text-sm">{item.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Kind: {item.kind} · Available: <strong className="tnum">{item.remainingQuantity}</strong> of {item.totalQuantity} total
+                        </p>
+                      </div>
 
-                    <div className="flex items-center gap-2">
-                      <Label htmlFor={`av-${item.id}`} className="text-xs text-muted-foreground">
-                        Units:
-                      </Label>
-                      <Input
-                        id={`av-${item.id}`}
-                        type="number"
-                        min={0}
-                        max={item.totalQuantity}
-                        value={requested}
-                        onChange={(e) =>
-                          setAvRequests({
-                            ...avRequests,
-                            [item.id]: Math.max(0, Number(e.target.value)),
-                          })
-                        }
-                        className={`w-20 text-center font-medium h-9 ${
-                          isOverLimit ? 'border-rose-500' : ''
-                        }`}
-                        data-testid={`input-av-${item.id}`}
-                      />
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor={`av-${item.id}`} className="text-xs text-muted-foreground">
+                          Units:
+                        </Label>
+                        <Input
+                          id={`av-${item.id}`}
+                          type="number"
+                          min={0}
+                          max={item.totalQuantity}
+                          value={requested}
+                          onChange={(e) =>
+                            setAvRequests({
+                              ...avRequests,
+                              [item.id]: Math.max(0, Number(e.target.value)),
+                            })
+                          }
+                          className={`w-20 text-center font-medium h-9 ${
+                            isOverLimit ? 'border-rose-500' : ''
+                          }`}
+                          data-testid={`input-av-${item.id}`}
+                        />
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </CardContent>
           <CardFooter className="flex justify-between">
             <Button variant="outline" onClick={() => setStep(2)}>
@@ -552,55 +640,45 @@ export const ProposalWizardPage: React.FC = () => {
               </div>
             )}
 
-            {/* Summary Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm bg-muted/30 p-4 rounded-xl border border-border">
-              <div>
-                <span className="text-xs text-muted-foreground uppercase tracking-wider block">Title</span>
-                <p className="font-semibold text-base mt-0.5">{title}</p>
-              </div>
-
-              <div>
-                <span className="text-xs text-muted-foreground uppercase tracking-wider block">Expected Crowd</span>
-                <p className="font-semibold text-base mt-0.5 tnum">{expectedAttendance} students</p>
-              </div>
-
-              <div>
-                <span className="text-xs text-muted-foreground uppercase tracking-wider block">Venue</span>
-                <p className="font-semibold mt-0.5">{selectedVenue?.name}</p>
-                <p className="text-xs text-muted-foreground">{selectedVenue?.locationText}</p>
-              </div>
-
-              <div>
-                <span className="text-xs text-muted-foreground uppercase tracking-wider block">Schedule</span>
-                <p className="font-semibold mt-0.5">
-                  {startAt ? new Date(startAt).toLocaleString() : ''} - {endAt ? new Date(endAt).toLocaleTimeString() : ''}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+              <div className="p-3 rounded-lg border border-border bg-muted/20 space-y-1">
+                <span className="text-muted-foreground font-semibold">Hosting Organization:</span>
+                <p className="font-bold text-sm text-foreground">
+                  {clubs.find((c) => c.id === clubId)?.name || 'Selected Club'}
                 </p>
               </div>
 
-              <div className="sm:col-span-2">
-                <span className="text-xs text-muted-foreground uppercase tracking-wider block">AV Requests</span>
-                <div className="flex items-center gap-2 flex-wrap mt-1">
-                  {Object.entries(avRequests).filter(([_, q]) => q > 0).length === 0 ? (
-                    <span className="text-xs text-muted-foreground">None requested</span>
-                  ) : (
-                    Object.entries(avRequests)
-                      .filter(([_, q]) => q > 0)
-                      .map(([id, q]) => {
-                        const item = avResourcesData?.items.find((r) => r.id === id);
-                        return (
-                          <Badge key={id} variant="secondary">
-                            {item?.name ?? 'AV Item'}: {q} units
-                          </Badge>
-                        );
-                      })
-                  )}
-                </div>
+              <div className="p-3 rounded-lg border border-border bg-muted/20 space-y-1">
+                <span className="text-muted-foreground font-semibold">Event Title:</span>
+                <p className="font-bold text-sm text-foreground">{title || 'Untitled'}</p>
+              </div>
+
+              <div className="p-3 rounded-lg border border-border bg-muted/20 space-y-1">
+                <span className="text-muted-foreground font-semibold">Venue:</span>
+                <p className="font-bold text-sm text-foreground">
+                  {venues.find((v) => v.id === selectedVenueId)?.name || 'None Selected'}
+                </p>
+              </div>
+
+              <div className="p-3 rounded-lg border border-border bg-muted/20 space-y-1">
+                <span className="text-muted-foreground font-semibold">Expected Attendance:</span>
+                <p className="font-bold text-sm text-foreground tnum">{expectedAttendance} Students</p>
+              </div>
+
+              <div className="p-3 rounded-lg border border-border bg-muted/20 space-y-1 sm:col-span-2">
+                <span className="text-muted-foreground font-semibold">Scheduled Window:</span>
+                <p className="font-bold text-sm text-foreground">
+                  {startAt ? new Date(startAt).toLocaleString() : 'N/A'} — {endAt ? new Date(endAt).toLocaleString() : 'N/A'}
+                </p>
               </div>
             </div>
 
-            <p className="text-xs text-muted-foreground">
-              Upon submission, a temporary calendar hold is placed on the venue, and a single-use cryptographic approval magic-link is emailed to your club's assigned faculty coordinator.
-            </p>
+            <div className="p-4 rounded-xl bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-900/60 text-xs text-indigo-900 dark:text-indigo-300 space-y-1">
+              <p className="font-bold">Next Steps in Institutional Workflow:</p>
+              <p>
+                Submitting this proposal will transition it to <strong>PENDING_FACULTY</strong> status and hold a provisional lock on the chosen venue. The designated faculty advisor will receive an authenticated preview token to approve or reject the request.
+              </p>
+            </div>
           </CardContent>
           <CardFooter className="flex justify-between">
             <Button variant="outline" onClick={() => setStep(3)}>
@@ -609,11 +687,17 @@ export const ProposalWizardPage: React.FC = () => {
             <Button
               onClick={() => submitProposalMutation.mutate()}
               disabled={submitProposalMutation.isPending}
-              className="gap-2 shadow-sm"
+              className="gap-2 font-bold shadow-md bg-indigo-600 hover:bg-indigo-700 text-white"
               data-testid="btn-submit-proposal"
             >
-              <CheckCircle2 className="h-4 w-4" />
-              <span>{submitProposalMutation.isPending ? 'Submitting...' : 'Submit Proposal'}</span>
+              {submitProposalMutation.isPending ? (
+                <span>Submitting Proposal...</span>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span>Submit for Faculty Approval</span>
+                </>
+              )}
             </Button>
           </CardFooter>
         </Card>

@@ -66,6 +66,8 @@ export const DiscoveryPage: React.FC = () => {
     data,
     isLoading,
     isError,
+    error,
+    refetch,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
@@ -73,51 +75,6 @@ export const DiscoveryPage: React.FC = () => {
     queryKey: ['events', 'infinite', debouncedSearch, selectedCategory, selectedDateFilter],
     initialPageParam: null as string | null,
     queryFn: async ({ pageParam }) => {
-      const mockEvents: EventCardData[] = [
-        {
-          id: 'evt_demo_1',
-          slug: 'autonomous-ai-hackathon-2026',
-          title: 'Autonomous AI Hackathon 2026',
-          description:
-            'A 36-hour flagship hackathon building autonomous agents, verified with Cloudflare and live gate scans.',
-          category: 'Hackathon',
-          startAt: new Date(Date.now() + 86400000).toISOString(),
-          venue: 'Auditorium Main & Turing Lab',
-          pricePaise: 0,
-          capacity: 100,
-          seatsRemaining: 3,
-          clubName: 'Turing Code Club',
-        },
-        {
-          id: 'evt_demo_2',
-          slug: 'nextgen-web-systems',
-          title: 'NextGen Distributed Web Systems with Rust',
-          description:
-            'Deep dive into high-concurrency systems, low-latency architectures, and event queues.',
-          category: 'Tech',
-          startAt: new Date(Date.now() + 172800000).toISOString(),
-          venue: 'Seminar Hall 3',
-          pricePaise: 19900,
-          capacity: 60,
-          seatsRemaining: 18,
-          clubName: 'ACM Student Chapter',
-        },
-        {
-          id: 'evt_demo_3',
-          slug: 'campus-robotics-expo',
-          title: 'Annual Campus Robotics & Drone Expo',
-          description:
-            'Showcase of autonomous rovers, swarm robotics, and aerial imaging vehicles.',
-          category: 'Workshop',
-          startAt: new Date(Date.now() + 259200000).toISOString(),
-          venue: 'Engineering Quadrangle',
-          pricePaise: 0,
-          capacity: 150,
-          seatsRemaining: 65,
-          clubName: 'Robotics Society',
-        },
-      ];
-
       const params = new URLSearchParams();
       if (debouncedSearch) params.set('search', debouncedSearch);
       if (selectedCategory !== 'All') params.set('category', selectedCategory);
@@ -125,35 +82,16 @@ export const DiscoveryPage: React.FC = () => {
       if (pageParam) params.set('cursor', pageParam);
       params.set('limit', '9');
 
-      try {
-        const res = await api.get<{
-          events?: EventCardData[];
-          items?: EventCardData[];
-          nextCursor?: string | null;
-        }>(`/events?${params.toString()}`, { showToast: false });
-        const list = res.events || res.items || [];
-        return {
-          events: list.length > 0 ? list : (debouncedSearch ? [] : mockEvents),
-          nextCursor: res.nextCursor || null,
-        };
-      } catch {
-        // Fallback demo events when backend endpoint is empty or offline
-        let filtered = mockEvents;
-        if (debouncedSearch) {
-          filtered = filtered.filter((e) =>
-            e.title.toLowerCase().includes(debouncedSearch.toLowerCase())
-          );
-        }
-        if (selectedCategory !== 'All') {
-          filtered = filtered.filter(
-            (e) => e.category.toLowerCase() === selectedCategory.toLowerCase()
-          );
-        }
-        return {
-          events: filtered,
-          nextCursor: null,
-        };
-      }
+      const res = await api.get<{
+        events?: EventCardData[];
+        items?: EventCardData[];
+        nextCursor?: string | null;
+      }>(`/events?${params.toString()}`, { showToast: false });
+      const list = res.events || res.items || [];
+      return {
+        events: list,
+        nextCursor: res.nextCursor || null,
+      };
     },
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
   });
@@ -329,6 +267,16 @@ export const DiscoveryPage: React.FC = () => {
           <SkeletonCard />
           <SkeletonCard />
           <SkeletonCard />
+        </div>
+      ) : isError ? (
+        <div className="p-8 rounded-xl border border-destructive/20 bg-destructive/10 text-center space-y-3">
+          <p className="text-sm font-semibold text-destructive">
+            Failed to load campus events: {(error as any)?.message || 'Network error'}
+          </p>
+          <Button variant="outline" onClick={() => refetch()} className="gap-2">
+            <RotateCcw className="h-4 w-4" />
+            <span>Retry</span>
+          </Button>
         </div>
       ) : allEvents.length === 0 ? (
         <EmptyState

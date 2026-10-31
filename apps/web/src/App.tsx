@@ -4,6 +4,7 @@ import { AppShell } from '@/components/layout/app-shell';
 import { ErrorBoundary } from '@/components/primitives/error-boundary';
 import { Skeleton } from '@/components/ui/skeleton';
 import { RequireAuth, RequireRole } from '@/lib/auth';
+import { ActiveClubProvider } from '@/features/organizer/ActiveClubContext';
 
 // Full Feature Implementations
 const DiscoverPage = lazy(() => import('@/features/discovery/DiscoveryPage'));
@@ -48,8 +49,9 @@ const PageFallback: React.FC = () => (
 
 export const AppRoutes: React.FC = () => {
   return (
-    <Suspense fallback={<PageFallback />}>
-      <Routes>
+    <ActiveClubProvider>
+      <Suspense fallback={<PageFallback />}>
+        <Routes>
         <Route element={<AppShell />}>
           {/* Public Routes */}
           <Route path="/" element={<DiscoverPage />} />
@@ -214,6 +216,16 @@ export const AppRoutes: React.FC = () => {
               </RequireAuth>
             }
           />
+          <Route
+            path="/organizer/clubs/:clubId/settings"
+            element={
+              <RequireAuth>
+                <RequireRole roles={['ORGANIZER', 'FACULTY', 'ADMIN']}>
+                  <ClubSettingsPage />
+                </RequireRole>
+              </RequireAuth>
+            }
+          />
 
           {/* Admin Routes */}
           <Route
@@ -231,6 +243,7 @@ export const AppRoutes: React.FC = () => {
         </Route>
       </Routes>
     </Suspense>
+  </ActiveClubProvider>
   );
 };
 
