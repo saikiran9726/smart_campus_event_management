@@ -16,35 +16,51 @@ jobs:
         image: postgres:16-alpine
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: password
+          POSTGRES_PASSWORD: postgres
           POSTGRES_DB: eventora_test
         ports:
           - 5432:5432
         options: >-
           --health-cmd pg_isready
-          --health-interval 10s
+          --health-interval 5s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 10
 
     env:
       NODE_ENV: test
-      DATABASE_URL: postgresql://postgres:password@localhost:5432/eventora_test?sslmode=disable
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/eventora_test
       DATABASE_SSL: "false"
       DATABASE_POOL_MAX: 10
       PORT: 4000
       PUBLIC_WEB_URL: http://localhost:3000
       PUBLIC_API_URL: http://localhost:4000
       VITE_API_URL: http://localhost:4000
+      PAYMENT_MODE: sandbox
       CLERK_PUBLISHABLE_KEY: pk_test_ci_dummy_publishable_key
       CLERK_SECRET_KEY: sk_test_ci_dummy_secret_key_at_least_32_chars
-      CLERK_WEBHOOK_SECRET: whsec_dummy_ci_secret_key_long_enough
+      CLERK_WEBHOOK_SECRET: whsec_dGVzdHNlY3JldDEyMzQ1Njc4OWFiY2RlZg==
       VITE_CLERK_PUBLISHABLE_KEY: pk_test_ci_dummy_publishable_key
+      MAGIC_LINK_SECRET: ci_test_magic_link_secret_at_least_32_chars_long
+      OD_SEAL_SECRET: ci_test_od_seal_secret_at_least_32_chars_long
+      OD_SEAL_SECRET_PREVIOUS: ""
+      R2_ACCOUNT_ID: ci_dummy_r2_account_id
+      R2_ACCESS_KEY_ID: ci_dummy_r2_access_key_id
+      R2_SECRET_ACCESS_KEY: ci_dummy_r2_secret_access_key
+      R2_BUCKET: eventora-assets
+      R2_PUBLIC_BASE_URL: https://assets.eventora.campus.edu
+      RESEND_API_KEY: ""
+      MAIL_FROM: Eventora <events@eventora.campus.edu>
+      EMAIL_PROVIDER: console
+      WHATSAPP_PROVIDER: console
+      META_WA_TOKEN: ""
+      META_WA_PHONE_ID: ""
       TURNSTILE_SECRET_KEY: 1x0000000000000000000000000000000AA
       TURNSTILE_SITE_KEY: 1x00000000000000000000AA
       VITE_TURNSTILE_SITE_KEY: 1x00000000000000000000AA
-      MAGIC_LINK_SECRET: ci_test_magic_link_secret_at_least_32_chars_long
-      OD_SEAL_SECRET: ci_test_od_seal_secret_at_least_32_chars_long
-      PAYMENT_MODE: sandbox
+      INITIAL_ADMIN_EMAILS: admin@eventora.campus.edu
+      ALLOW_DEMO_SEED: "true"
+      ALLOW_HTTP_WEB_URL: "true"
+      GIT_SHA: test-ci
 
     steps:
       - name: Checkout Code
@@ -67,6 +83,20 @@ jobs:
       - name: Build Shared Package
         run: pnpm --filter @eventora/shared build
 
+      - name: Wait for PostgreSQL
+        run: |
+          until pg_isready -h localhost -p 5432 -U postgres; do
+            echo "Waiting for PostgreSQL..."
+            sleep 1
+          done
+          echo "PostgreSQL is ready!"
+
+      - name: Run Database Migrations
+        run: pnpm --filter api db:migrate
+
+      - name: Seed Database
+        run: pnpm --filter api db:seed
+
       - name: Invariant Gate (Zero Placeholders)
         run: |
           ! git grep -InE "TODO|FIXME|not implemented|rest of implementation" -- apps packages scripts e2e && echo "NO PLACEHOLDERS FOUND"
@@ -84,7 +114,7 @@ jobs:
         run: pnpm -r test
 
       - name: Concurrency Engine ACID Trials
-        run: pnpm --filter @eventora/api test:concurrency
+        run: pnpm --filter api test:concurrency
 
       - name: Install Playwright Browsers
         run: pnpm exec playwright install --with-deps chromium
