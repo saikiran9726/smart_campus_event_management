@@ -3,6 +3,9 @@ import path from 'node:path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { workboxConfig } from './src/lib/workbox-config';
+
+export { workboxConfig };
 
 export default defineConfig({
   plugins: [
@@ -38,35 +41,7 @@ export default defineConfig({
           },
         ],
       },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        navigateFallback: '/offline.html',
-        navigateFallbackDenylist: [/^\/api/],
-        runtimeCaching: [
-          {
-            urlPattern: ({ url, request }) =>
-              request.method === 'GET' &&
-              url.pathname.includes('/events') &&
-              !url.pathname.includes('/gate') &&
-              !url.pathname.includes('/scan'),
-            handler: 'StaleWhileRevalidate',
-            options: {
-              cacheName: 'events-cache',
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 24,
-              },
-            },
-          },
-          {
-            urlPattern: ({ url }) =>
-              url.pathname.includes('/gate') ||
-              url.pathname.includes('/scan') ||
-              url.pathname.includes('/scanner'),
-            handler: 'NetworkOnly',
-          },
-        ],
-      },
+      workbox: workboxConfig,
     }),
   ],
   resolve: {
@@ -74,8 +49,14 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  envDir: path.resolve(__dirname, '../../'),
   server: {
     port: 3000,
+    strictPort: true,
+    host: true,
+  },
+  build: {
+    sourcemap: false,
   },
   test: {
     globals: true,

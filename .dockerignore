@@ -1,0 +1,15 @@
+node_modules
+.env
+.env.*
+!.env.example
+e2e
+test-results
+playwright-report
+dist
+apps/web/dist
+apps/api/dist
+packages/shared/dist
+.git
+.github
+docs
+scripts

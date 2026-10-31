@@ -4,12 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build",
+    "build": "node scripts/gen-headers.mjs && vite build",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "test": "vitest run",
     "dev": "vite",
     "preview": "vite preview"
+  },
+  "engines": {
+    "node": ">=22.0.0"
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.61.3",

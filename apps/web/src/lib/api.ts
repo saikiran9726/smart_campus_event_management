@@ -175,7 +175,7 @@ export async function apiFetch<T = unknown>(
       toast({
         variant: 'destructive',
         title: 'Connection Error',
-        description: 'Unable to communicate with the Eventora API.',
+        description: `Cannot reach API at ${env.VITE_API_URL}. Is the server running?`,
       });
     }
     throw new ApiError('NETWORK_ERROR', errorMsg, 0);

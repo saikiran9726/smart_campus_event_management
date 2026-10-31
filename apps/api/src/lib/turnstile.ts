@@ -14,6 +14,13 @@ export async function verifyTurnstile(
     return false;
   }
 
+  // Never accept test tokens in production runtime
+  if (env.NODE_ENV === 'production') {
+    if (token === 'test-pass' || token === 'test-fail') {
+      return false;
+    }
+  }
+
   // Fast test-mode bypass
   if (env.NODE_ENV === 'test') {
     if (token === 'test-pass') {

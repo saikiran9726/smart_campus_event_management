@@ -32,6 +32,7 @@ const ClubSettingsPage = lazy(() => import('@/features/organizer/ClubSettingsPag
 
 const AdminPage = lazy(() => import('@/routes/admin'));
 const ProfilePage = lazy(() => import('@/features/profile/ProfilePage'));
+const NotFoundPage = lazy(() => import('@/features/error/NotFoundPage'));
 
 const PageFallback: React.FC = () => (
   <div className="container max-w-5xl py-8 px-4 sm:px-8 space-y-6 mx-auto animate-pulse">
@@ -225,6 +226,8 @@ export const AppRoutes: React.FC = () => {
               </RequireAuth>
             }
           />
+          {/* Catch-all 404 Route */}
+          <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
     </Suspense>

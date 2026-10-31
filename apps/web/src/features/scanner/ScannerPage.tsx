@@ -295,7 +295,7 @@ export const ScannerPage: React.FC = () => {
           });
         } else {
           // Accurate YELLOW feedback mapping
-          const code = (res.code || res.error || 'INVALID_TOKEN') as string;
+          const code = (res.code || res.error || (res as any).reason || 'INVALID_TOKEN') as string;
           const subtitle =
             (YELLOW_REASONS as Record<string, string>)[code] ||
             res.message ||
@@ -400,6 +400,19 @@ export const ScannerPage: React.FC = () => {
       if (animFrameRef.current) {
         cancelAnimationFrame(animFrameRef.current);
       }
+    };
+  }, [handleTokenScanned]);
+
+  // Test event listener to simulate scans in automated test runners
+  useEffect(() => {
+    const handleTestScanEvent = (e: any) => {
+      if (e.detail?.token) {
+        void handleTokenScanned(e.detail.token);
+      }
+    };
+    window.addEventListener('eventora:test-scan', handleTestScanEvent);
+    return () => {
+      window.removeEventListener('eventora:test-scan', handleTestScanEvent);
     };
   }, [handleTokenScanned]);
 
@@ -587,6 +600,20 @@ export const ScannerPage: React.FC = () => {
     <div className="relative h-screen w-screen overflow-hidden bg-black select-none text-white font-sans flex flex-col justify-between">
       {/* Offscreen canvas for jsQR analysis */}
       <canvas ref={canvasRef} className="hidden" />
+
+      {/* Hidden input for test scan simulation */}
+      <input
+        type="text"
+        data-testid="scanner-simulated-input"
+        className="sr-only"
+        aria-hidden="true"
+        onChange={(e) => {
+          if (e.target.value) {
+            void handleTokenScanned(e.target.value);
+            e.target.value = '';
+          }
+        }}
+      />
 
       {/* Edge-to-edge camera viewport */}
       <video

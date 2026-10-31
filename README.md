@@ -11,37 +11,42 @@ Eventora is structured as an enterprise-grade TypeScript monorepo orchestrated w
 ```
 eventora/
 ├── apps/
-│   ├── api/                   # Fastify HTTP & Socket.IO backend (Node.js 20+)
+│   ├── api/                   # Fastify HTTP & Socket.IO backend (Node.js 22+)
 │   │   ├── src/
 │   │   │   ├── db/            # Drizzle ORM schema, migrations, connection pools, and seeders
 │   │   │   ├── modules/       # Domain modules (auth, events, forms, gate, passkeys, waitlist, od, etc.)
 │   │   │   ├── realtime/      # Socket.IO rooms, connection handlers, and typing throttlers
 │   │   │   ├── workers/       # Background cron workers (offer-expiry, payment-hold, strikes, comms)
 │   │   │   └── server.ts      # Fastify server instance, security plugins, error handlers, and guards
+│   │   └── Dockerfile         # Multi-stage production container image (node:22-slim)
 │   └── web/                   # Vite React TypeScript PWA with Tailwind CSS & shadcn/ui
 │       ├── src/
 │       │   ├── features/      # Feature modules (scanner, community, discovery, passport, builder, etc.)
 │       │   ├── components/    # Reusable UI primitives, app-shell, dialogs, sheets, and badges
 │       │   ├── lib/           # API fetch client, socket provider, auth context, and sound engine
 │       │   └── styles/        # Tokens, theme palettes, and dark-mode CSS
+│       └── public/            # Static assets, PWA manifest, _redirects, and _headers (CSP)
 ├── packages/
 │   └── shared/                # Universal shared schemas, domain types, token generators, and validators
 ├── e2e/                       # Playwright end-to-end integration test suite
-├── scripts/                   # Viva runbook scripts and headless concurrency benchmarks
-└── docs/                      # Architectural verification checklist and documentation
+├── scripts/                   # Viva runbook scripts, dev check, and post-deploy smoke tests
+└── docs/                      # Architectural verification checklist, runbook, and deployment guide
+    ├── CHECKLIST.md           # Master architectural verification checklist
+    ├── DEPLOYMENT.md          # Step-by-step production hosting guide (Neon, Render, Cloudflare)
+    └── RUNBOOK.md             # Operations, secret rotation, and incident runbook
 ```
 
 ### Technology Stack
-- **Backend API:** Fastify 5, Drizzle ORM, PostgreSQL (node-postgres with pooling), Socket.IO 4, Jose (JWT), QRCode, Sharp, PDFKit, Satori, Resvg.
+- **Backend API:** Fastify 5, Drizzle ORM, PostgreSQL (node-postgres with pooling & SSL), Socket.IO 4, Jose (JWT), QRCode, Sharp, PDFKit, Satori, Resvg.
 - **Frontend Web:** React 18, Vite 5, Tailwind CSS, `@tanstack/react-query`, `@tanstack/react-virtual`, `@dnd-kit`, jsQR, WebAudio API, Service Worker PWA (`vite-plugin-pwa`).
 - **Authentication & RBAC:** Clerk test-bypass headers, Role-based Access Control (`STUDENT`, `ORGANIZER`, `FACULTY`, `ADMIN`), scoped volunteer scanner JWTs.
 
 ---
 
-## 🚀 Setup & Installation
+## 🚀 Setup & Local Development
 
 ### Prerequisites
-- Node.js `v20.x` or higher
+- Node.js `v22.x` (or higher)
 - `pnpm` `v9.x`
 - PostgreSQL 15+ running locally or via Docker
 
@@ -53,48 +58,54 @@ pnpm install --frozen-lockfile
 ```
 
 ### 2. Configure Environment Variables
-Copy `.env.example` (or configure `.env` at repo root):
+Copy `.env.example` to `.env` at repo root:
 ```bash
 cp .env.example .env
 ```
 
 ### 3. Database Migration & Seed
-Run database migrations and populate realistic campus demo data:
+Run database migrations and populate campus demo data:
 ```bash
 pnpm --filter api db:migrate
 pnpm --filter api db:seed
 ```
 
-### 4. Start Development Services
-Run all services concurrently:
+### 4. Start Development Services Concurrently
+Run backend API and frontend web application simultaneously:
 ```bash
-pnpm dev
+pnpm dev:all
 ```
 - Web Application: [http://localhost:3000](http://localhost:3000)
-- Backend REST API: [http://localhost:3001](http://localhost:3001)
-- Health Check: [http://localhost:3001/health](http://localhost:3001/health)
+- Backend REST API: [http://localhost:4000](http://localhost:4000)
+- Liveness Probe: [http://localhost:4000/health](http://localhost:4000/health)
+- Readiness Probe: [http://localhost:4000/ready](http://localhost:4000/ready)
+
+Verify local connectivity via:
+```powershell
+powershell -File scripts/check-dev.ps1
+```
+*(or `bash scripts/check-dev.sh` on POSIX systems)*
 
 ---
 
-## ⚙️ Environment Variables Reference
+## 🌐 Production Deployment & Infrastructure
 
-| Variable | Description | Default / Example |
-| :--- | :--- | :--- |
-| `NODE_ENV` | Runtime environment (`development`, `test`, `production`) | `development` |
-| `PORT` | API server port | `3001` (or `4000`) |
-| `DATABASE_URL` | PostgreSQL connection string | `postgresql://postgres:password@localhost:5432/eventora` |
-| `PUBLIC_WEB_URL` | Base public URL for web frontend | `http://localhost:3000` |
-| `PUBLIC_API_URL` | Base public URL for backend API | `http://localhost:3001` |
-| `CLERK_PUBLISHABLE_KEY` | Clerk authentication publishable key | `pk_test_...` |
-| `CLERK_SECRET_KEY` | Clerk backend secret key | `sk_test_...` |
-| `CLERK_WEBHOOK_SECRET` | Svix webhook signing secret | `whsec_...` |
-| `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile secret key | `0x4AAAAAA...` |
-| `TURNSTILE_SITE_KEY` | Cloudflare Turnstile site key | `0x4AAAAAA...` |
-| `MAGIC_LINK_SECRET` | HMAC secret for single-use decision tokens (min 32 chars) | `32+ char cryptographic secret` |
-| `OD_SEAL_SECRET` | HMAC secret for On-Duty PDF tamper-proof digital seals | `32+ char cryptographic secret` |
-| `PAYMENT_MODE` | Payment simulation mode (**MUST** be `sandbox`) | `sandbox` |
-| `R2_ACCOUNT_ID` | Cloudflare R2 / S3 Account ID | `eventora-r2-id` |
-| `R2_BUCKET` | Storage bucket for receipts, posters, and decks | `eventora-assets` |
+Eventora is designed for turnkey deployment on modern cloud primitives:
+- Detailed guide: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+- Operational runbook: [docs/RUNBOOK.md](docs/RUNBOOK.md)
+- Infrastructure blueprint: `render.yaml`
+
+### In-Memory Single Instance Limitation
+> [!IMPORTANT]
+> **Single Instance Constraint**: Eventora's background queues, waitlist promotion sweeps, and Socket.IO rooms operate in-process without an external Redis broker. Horizontal scaling beyond 1 API replica requires an external Redis adapter. Deployment configuration must be set to **exactly 1 instance** (`numInstances: 1`).
+
+### Simulated Sandbox Payment Statement
+> [!NOTE]
+> **PAYMENT_MODE Invariant**: Eventora operates exclusively with a 100% simulated sandbox payment system (`PAYMENT_MODE=sandbox`). No real monetary transactions, bank accounts, or external payment gateways are touched. All payment flows (card simulation, UPI intent simulation, and payment hold timers) run within a local atomic mock state machine. Live payments are strictly prohibited by production startup guards.
+
+### WhatsApp Notification Provider Note
+> [!NOTE]
+> **WhatsApp Provider**: `WHATSAPP_PROVIDER` supports `console` (development/testing) and `meta` (official Meta Cloud API) in production. Unofficial scrapers (`baileys`) are strictly prohibited in production and will cause the API server to exit on startup.
 
 ---
 
@@ -125,12 +136,6 @@ pnpm dev
 
 ---
 
-## 💳 Simulated Sandbox Payment Statement
-
-> **IMPORTANT:** Eventora operates exclusively with a 100% simulated sandbox payment system (`PAYMENT_MODE=sandbox`). No real monetary transactions, bank accounts, or external payment gateways are touched. All payment flows (card simulation, UPI intent simulation, and payment hold timers) run within a local atomic mock state machine.
-
----
-
 ## 🧪 Verification & Test Suite
 
 The monorepo includes end-to-end integration tests, concurrency race stress tests, and automated accessibility checks.
@@ -143,7 +148,7 @@ pnpm -r typecheck && pnpm -r lint
 # 2. Production Build
 pnpm -r build
 
-# 3. Unit & Integration Tests (260+ tests)
+# 3. Unit & Integration Tests (270+ tests across workspace)
 pnpm -r test
 
 # 4. ACID Concurrency Engine (10 repeated trials, 25 clients racing for 1 seat)
@@ -153,10 +158,13 @@ pnpm --filter api test:concurrency
 pnpm e2e
 
 # 6. Verify Zero TODOs / Placeholders
-grep -RIn "TODO\|FIXME\|not implemented" apps packages --include=*.ts --include=*.tsx || echo "NO PLACEHOLDERS"
+! git grep -InE "TODO|FIXME|not implemented|rest of implementation" -- apps packages scripts e2e && echo "NO PLACEHOLDERS FOUND"
 
 # 7. Headless Viva Concurrency Benchmark
 bash scripts/viva.sh --headless
+
+# 8. Post-Deploy Smoke Verification
+pnpm smoke:prod
 ```
 
 ### Seeded Credentials for Interactive Demo

@@ -114,11 +114,197 @@ describe('Scanner PWA Suite (Prompt 16)', () => {
     expect(screen.getByText('Manual Roll Lookup')).toBeInTheDocument();
   });
 
-  it('4. YELLOW Feedback Mapping: accurately maps each API rejection reason', () => {
-    expect(YELLOW_REASONS.WRONG_EVENT).toBe('Wrong Event — Ticket registered for another event');
-    expect(YELLOW_REASONS.INVALID_TOKEN).toBe('Invalid Ticket — Unrecognized token');
-    expect(YELLOW_REASONS.VOID).toBe('Ticket Voided — Cancelled registration');
-    expect(YELLOW_REASONS.NOT_CHECKED_IN).toBe('Not Checked In — Entry check-in required before Meal/Kit redemption');
+  it('YELLOW feedback: renders WRONG_EVENT with message and amber background', async () => {
+    sessionStorage.setItem('eventora_scanner_token', 'jwt_scanner_token_xyz');
+    sessionStorage.setItem(
+      'eventora_scanner_event',
+      JSON.stringify({
+        eventId: 'evt_123',
+        eventTitle: 'HackFest 2026',
+        volunteerName: 'Alex Volunteer',
+      })
+    );
+
+    vi.mocked(api.post).mockResolvedValueOnce({
+      result: 'YELLOW',
+      reason: 'WRONG_EVENT',
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/scanner']}>
+        <ScannerPage />
+      </MemoryRouter>
+    );
+
+    fireEvent.change(screen.getByTestId('scanner-simulated-input'), {
+      target: { value: 'ev_tok_1234567890123456789012341' },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('scanner-feedback-yellow')).toBeInTheDocument();
+    });
+
+    const feedback = screen.getByTestId('scanner-feedback-yellow');
+    expect(feedback).toHaveClass('bg-[#D97706]');
+    expect(
+      screen.getByText('Wrong Event — Ticket registered for another event')
+    ).toBeInTheDocument();
+  });
+
+  it('YELLOW feedback: renders INVALID_TOKEN with message and amber background', async () => {
+    sessionStorage.setItem('eventora_scanner_token', 'jwt_scanner_token_xyz');
+    sessionStorage.setItem(
+      'eventora_scanner_event',
+      JSON.stringify({
+        eventId: 'evt_123',
+        eventTitle: 'HackFest 2026',
+        volunteerName: 'Alex Volunteer',
+      })
+    );
+
+    vi.mocked(api.post).mockResolvedValueOnce({
+      result: 'YELLOW',
+      reason: 'INVALID_TOKEN',
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/scanner']}>
+        <ScannerPage />
+      </MemoryRouter>
+    );
+
+    fireEvent.change(screen.getByTestId('scanner-simulated-input'), {
+      target: { value: 'ev_tok_1234567890123456789012342' },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('scanner-feedback-yellow')).toBeInTheDocument();
+    });
+
+    const feedback = screen.getByTestId('scanner-feedback-yellow');
+    expect(feedback).toHaveClass('bg-[#D97706]');
+    expect(
+      screen.getByText('Invalid Ticket — Unrecognized token')
+    ).toBeInTheDocument();
+  });
+
+  it('YELLOW feedback: renders VOID with message and amber background', async () => {
+    sessionStorage.setItem('eventora_scanner_token', 'jwt_scanner_token_xyz');
+    sessionStorage.setItem(
+      'eventora_scanner_event',
+      JSON.stringify({
+        eventId: 'evt_123',
+        eventTitle: 'HackFest 2026',
+        volunteerName: 'Alex Volunteer',
+      })
+    );
+
+    vi.mocked(api.post).mockResolvedValueOnce({
+      result: 'YELLOW',
+      reason: 'VOID',
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/scanner']}>
+        <ScannerPage />
+      </MemoryRouter>
+    );
+
+    fireEvent.change(screen.getByTestId('scanner-simulated-input'), {
+      target: { value: 'ev_tok_1234567890123456789012343' },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('scanner-feedback-yellow')).toBeInTheDocument();
+    });
+
+    const feedback = screen.getByTestId('scanner-feedback-yellow');
+    expect(feedback).toHaveClass('bg-[#D97706]');
+    expect(
+      screen.getByText('Ticket Voided — Cancelled registration')
+    ).toBeInTheDocument();
+  });
+
+  it('YELLOW feedback: renders NOT_CHECKED_IN with message and amber background', async () => {
+    sessionStorage.setItem('eventora_scanner_token', 'jwt_scanner_token_xyz');
+    sessionStorage.setItem(
+      'eventora_scanner_event',
+      JSON.stringify({
+        eventId: 'evt_123',
+        eventTitle: 'HackFest 2026',
+        volunteerName: 'Alex Volunteer',
+      })
+    );
+
+    vi.mocked(api.post).mockResolvedValueOnce({
+      result: 'YELLOW',
+      reason: 'NOT_CHECKED_IN',
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/scanner']}>
+        <ScannerPage />
+      </MemoryRouter>
+    );
+
+    fireEvent.change(screen.getByTestId('scanner-simulated-input'), {
+      target: { value: 'ev_tok_1234567890123456789012344' },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('scanner-feedback-yellow')).toBeInTheDocument();
+    });
+
+    const feedback = screen.getByTestId('scanner-feedback-yellow');
+    expect(feedback).toHaveClass('bg-[#D97706]');
+    expect(
+      screen.getByText('Not Checked In — Entry check-in required before Meal/Kit redemption')
+    ).toBeInTheDocument();
+  });
+
+  it('RED feedback: displays duplicate ticket message with formatted timestamp and volunteer label', async () => {
+    sessionStorage.setItem('eventora_scanner_token', 'jwt_scanner_token_xyz');
+    sessionStorage.setItem(
+      'eventora_scanner_event',
+      JSON.stringify({
+        eventId: 'evt_123',
+        eventTitle: 'HackFest 2026',
+        volunteerName: 'Alex Volunteer',
+      })
+    );
+
+    const fixedIso = '2026-10-31T10:30:00.000Z';
+    const expectedTime = new Date(fixedIso).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+
+    vi.mocked(api.post).mockResolvedValueOnce({
+      result: 'RED',
+      scannedAt: fixedIso,
+      scannedByLabel: 'Volunteer A',
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/scanner']}>
+        <ScannerPage />
+      </MemoryRouter>
+    );
+
+    fireEvent.change(screen.getByTestId('scanner-simulated-input'), {
+      target: { value: 'ev_tok_1234567890123456789012399' },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('scanner-feedback-red')).toBeInTheDocument();
+    });
+
+    const feedback = screen.getByTestId('scanner-feedback-red');
+    expect(feedback).toHaveClass('bg-[#E11D48]');
+    expect(screen.getByText('DUPLICATE TICKET')).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(expectedTime))).toBeInTheDocument();
+    expect(screen.getByText(/Volunteer A/)).toBeInTheDocument();
   });
 
   it('5. Offline Security: displays amber offline banner, halts scans, and never replays queued scans on reconnect', async () => {

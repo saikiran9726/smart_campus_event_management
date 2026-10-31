@@ -24,6 +24,10 @@ import {
 } from './schema';
 
 export async function runSeed(): Promise<void> {
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEMO_SEED !== 'true') {
+    console.error('❌ Refusing to run demo seed in production without ALLOW_DEMO_SEED=true');
+    process.exit(1);
+  }
   console.log('Seeding Eventora database...');
 
   // 1. Seed Users

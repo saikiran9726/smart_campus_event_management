@@ -30,8 +30,8 @@ describe('Fastify Server, Clerk Auth, Webhooks, & RBAC', () => {
     await server.close();
   });
 
-  describe('GET /health', () => {
-    it('returns status ok and db up', async () => {
+  describe('GET /health & GET /ready', () => {
+    it('returns status ok for health without database call', async () => {
       const response = await server.inject({
         method: 'GET',
         url: '/health',
@@ -40,6 +40,17 @@ describe('Fastify Server, Clerk Auth, Webhooks, & RBAC', () => {
       expect(response.statusCode).toBe(200);
       const json = JSON.parse(response.body);
       expect(json.status).toBe('ok');
+    });
+
+    it('returns status ready and db up for ready', async () => {
+      const response = await server.inject({
+        method: 'GET',
+        url: '/ready',
+      });
+
+      expect(response.statusCode).toBe(200);
+      const json = JSON.parse(response.body);
+      expect(json.status).toBe('ready');
       expect(json.db).toBe('up');
     });
   });

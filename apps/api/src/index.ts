@@ -31,6 +31,12 @@ export async function start(): Promise<void> {
 
   const shutdown = async (signal: string) => {
     server.log.info({ signal }, 'Graceful shutdown initiated');
+    const timer = setTimeout(() => {
+      console.error('Graceful shutdown timed out after 10s, forcing exit');
+      process.exit(1);
+    }, 10000);
+    timer.unref();
+
     try {
       stopAllWorkers();
       io.close();

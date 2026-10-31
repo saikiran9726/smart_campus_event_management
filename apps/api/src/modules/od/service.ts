@@ -450,7 +450,15 @@ export async function verifyOdLetterBySerial(serial: string) {
     checkedInAt
   );
 
-  const valid = letter.signature === expectedSignature;
+  let valid = letter.signature === expectedSignature;
+
+  // Support previous OD seal secret for zero-downtime key rotation
+  if (!valid && env.OD_SEAL_SECRET_PREVIOUS && env.OD_SEAL_SECRET_PREVIOUS.length >= 32) {
+    const isoCheckedInAt = typeof checkedInAt === 'string' ? checkedInAt : checkedInAt.toISOString();
+    const payload = `${letter.serial}|${letter.userId}|${letter.eventId}|${isoCheckedInAt}`;
+    const previousSignature = crypto.createHmac('sha256', env.OD_SEAL_SECRET_PREVIOUS).update(payload).digest('hex');
+    valid = letter.signature === previousSignature;
+  }
 
   // Load student & event details
   const [user] = await db

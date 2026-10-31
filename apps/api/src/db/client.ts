@@ -1,18 +1,24 @@
 import { drizzle, NodePgDatabase } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
-import dotenv from 'dotenv';
+import { env } from '../env';
 import * as schema from './schema';
 
-dotenv.config({ path: '../../.env' });
-dotenv.config();
-
 const connectionString =
+  env.DATABASE_URL ||
   process.env.DATABASE_URL ||
   'postgresql://postgres:postgres@localhost:5432/eventora?sslmode=disable';
 
+const ssl =
+  env.DATABASE_SSL || process.env.DATABASE_SSL === 'true'
+    ? { rejectUnauthorized: true }
+    : undefined;
+
+const max = env.DATABASE_POOL_MAX || Number(process.env.DATABASE_POOL_MAX) || 10;
+
 export const pool = new pg.Pool({
   connectionString,
-  max: 20,
+  max,
+  ssl,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
 });

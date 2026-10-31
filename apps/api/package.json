@@ -4,17 +4,22 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/copy-assets.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "test": "vitest run",
     "test:concurrency": "vitest run concurrency",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
+    "db:migrate:prod": "node dist/db/migrate.js",
+    "db:bootstrap": "tsx src/db/bootstrap.ts",
     "db:seed": "tsx src/db/seed.ts",
     "dev": "tsx watch src/index.ts",
     "tsx": "tsx",
     "generate-samples": "tsx scripts/generate-samples.ts"
+  },
+  "engines": {
+    "node": ">=22.0.0"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1160.0",

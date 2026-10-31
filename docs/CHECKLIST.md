@@ -107,3 +107,51 @@ This checklist confirms verification of all domain requirements, security guaran
 - [x] **Zero Placeholder Policy:**
   - Checked repository for all occurrences of `TODO`, `FIXME`, or `not implemented`.
   - Automated check: `grep -RIn "TODO\|FIXME\|not implemented" apps packages --include=*.ts --include=*.tsx` outputs `NO PLACEHOLDERS`.
+
+---
+
+## 18. Deployment & Production Hardening (Prompt 19)
+
+- [x] **Local Connectivity & Dev Orchestration (web :3000 -> API :4000):**
+  - Web Vite server locked to port 3000 (`strictPort: true`, `host: true`, `envDir: ../../`): [apps/web/vite.config.ts](file:///C:/sai%20projects/smartcampus/apps/web/vite.config.ts)
+  - Environment defaults set to `PUBLIC_WEB_URL=http://localhost:3000`, `PUBLIC_API_URL=http://localhost:4000`, `VITE_API_URL=http://localhost:4000`: [.env.example](file:///C:/sai%20projects/smartcampus/.env.example) and [.env](file:///C:/sai%20projects/smartcampus/.env)
+  - Fastify CORS allowlist function permitting `PUBLIC_WEB_URL` plus localhost:3000, localhost:5173, and 127.0.0.1:3000 in dev only, with 204 preflight and Helmet `crossOriginResourcePolicy: { policy: 'cross-origin' }`: [apps/api/src/server.ts](file:///C:/sai%20projects/smartcampus/apps/api/src/server.ts)
+  - Frontend API client reading `VITE_API_URL`, build-time validation in production mode, and descriptive connection error toasts: [apps/web/src/lib/api.ts](file:///C:/sai%20projects/smartcampus/apps/web/src/lib/api.ts)
+  - Monorepo `dev:all` command orchestrating API and web via concurrently: [package.json](file:///C:/sai%20projects/smartcampus/package.json)
+  - Automated local connectivity check scripts: [scripts/check-dev.ps1](file:///C:/sai%20projects/smartcampus/scripts/check-dev.ps1) and [scripts/check-dev.sh](file:///C:/sai%20projects/smartcampus/scripts/check-dev.sh)
+  - Unit tests verifying preflight headers for localhost:3000 and total rejection for evil.example: [apps/api/src/__tests__/production-hardening.test.ts](file:///C:/sai%20projects/smartcampus/apps/api/src/__tests__/production-hardening.test.ts)
+
+- [x] **Strengthened Scanner Rendering Tests:**
+  - Individual rendering tests for all four rejection reasons (`WRONG_EVENT`, `INVALID_TOKEN`, `VOID`, `NOT_CHECKED_IN`) verifying exact rejection copy and amber `#D97706` background: [apps/web/src/__tests__/scanner-community.test.tsx](file:///C:/sai%20projects/smartcampus/apps/web/src/__tests__/scanner-community.test.tsx)
+  - Dedicated duplicate RED rendering test verifying "DUPLICATE TICKET", formatted scan timestamp, and volunteer label: [apps/web/src/__tests__/scanner-community.test.tsx](file:///C:/sai%20projects/smartcampus/apps/web/src/__tests__/scanner-community.test.tsx)
+
+- [x] **API Production Hardening & Invariants:**
+  - Production startup guard in [apps/api/src/env.ts](file:///C:/sai%20projects/smartcampus/apps/api/src/env.ts) refusing to boot on live payment gateways, dummy Turnstile keys, short secrets (<32 chars), non-https web URLs, missing database credentials, or unofficial WhatsApp providers (`baileys`).
+  - Strict isolation: `x-test-user-id` bypass inactive in production, `/test/*` routes unregistered, and Turnstile `test-pass` strictly blocked with 403: [apps/api/src/server.ts](file:///C:/sai%20projects/smartcampus/apps/api/src/server.ts) and [apps/api/src/lib/turnstile.ts](file:///C:/sai%20projects/smartcampus/apps/api/src/lib/turnstile.ts)
+  - Fastify production options (`trustProxy: true`, `bodyLimit: 1MB`, `requestTimeout: 30s`, `keepAliveTimeout: 65s`, and 10s bounded graceful shutdown): [apps/api/src/server.ts](file:///C:/sai%20projects/smartcampus/apps/api/src/server.ts) and [apps/api/src/index.ts](file:///C:/sai%20projects/smartcampus/apps/api/src/index.ts)
+  - Health endpoints: lightweight liveness (`/health`) and migration/database readiness (`/ready`): [apps/api/src/server.ts](file:///C:/sai%20projects/smartcampus/apps/api/src/server.ts)
+  - Structured Pino log redaction masking headers, session cookies, tokens, and passkeys: [apps/api/src/server.ts](file:///C:/sai%20projects/smartcampus/apps/api/src/server.ts)
+  - Release metadata endpoint (`/version`): [apps/api/src/server.ts](file:///C:/sai%20projects/smartcampus/apps/api/src/server.ts)
+  - Migration runner using PostgreSQL advisory lock (`pg_advisory_lock`): [apps/api/src/db/migrate.ts](file:///C:/sai%20projects/smartcampus/apps/api/src/db/migrate.ts)
+  - Demo seed guard requiring explicit `ALLOW_DEMO_SEED=true`: [apps/api/src/db/seed.ts](file:///C:/sai%20projects/smartcampus/apps/api/src/db/seed.ts)
+  - Idempotent minimal production bootstrap script: [apps/api/src/db/bootstrap.ts](file:///C:/sai%20projects/smartcampus/apps/api/src/db/bootstrap.ts)
+  - Admin bootstrap from `INITIAL_ADMIN_EMAILS`: [apps/api/src/modules/webhooks/clerk.ts](file:///C:/sai%20projects/smartcampus/apps/api/src/modules/webhooks/clerk.ts) and [apps/api/src/plugins/auth.ts](file:///C:/sai%20projects/smartcampus/apps/api/src/plugins/auth.ts)
+  - SSL enforcement and connection pool sizing: [apps/api/src/db/client.ts](file:///C:/sai%20projects/smartcampus/apps/api/src/db/client.ts)
+  - Node 22 engine specification: [package.json](file:///C:/sai%20projects/smartcampus/package.json), [apps/api/package.json](file:///C:/sai%20projects/smartcampus/apps/api/package.json), [apps/web/package.json](file:///C:/sai%20projects/smartcampus/apps/web/package.json), [.nvmrc](file:///C:/sai%20projects/smartcampus/.nvmrc), and [apps/api/Dockerfile](file:///C:/sai%20projects/smartcampus/apps/api/Dockerfile)
+
+- [x] **Frontend Production & Edge Routing:**
+  - Cloudflare Pages SPA rewrite: [apps/web/public/_redirects](file:///C:/sai%20projects/smartcampus/apps/web/public/_redirects)
+  - Vercel SPA rewrite and security headers configuration: [apps/web/vercel.json](file:///C:/sai%20projects/smartcampus/apps/web/vercel.json)
+  - Cloudflare Pages security headers and dynamic CSP generation: [apps/web/public/_headers](file:///C:/sai%20projects/smartcampus/apps/web/public/_headers) and [apps/web/scripts/gen-headers.mjs](file:///C:/sai%20projects/smartcampus/apps/web/scripts/gen-headers.mjs)
+  - Service Worker workbox caching rules ensuring `/gate/*`, `/scanner/*`, `/tickets/*/qr.*`, and all authenticated calls are NetworkOnly: [apps/web/vite.config.ts](file:///C:/sai%20projects/smartcampus/apps/web/vite.config.ts) and [apps/web/src/__tests__/workbox-pwa.test.ts](file:///C:/sai%20projects/smartcampus/apps/web/src/__tests__/workbox-pwa.test.ts)
+  - Production build sourcemaps disabled: [apps/web/vite.config.ts](file:///C:/sai%20projects/smartcampus/apps/web/vite.config.ts)
+  - Global accessible 404 page: [apps/web/src/features/error/NotFoundPage.tsx](file:///C:/sai%20projects/smartcampus/apps/web/src/features/error/NotFoundPage.tsx)
+
+- [x] **Docker, Hosting & Operational Runbooks:**
+  - Multi-stage container image based on `node:22-slim`: [apps/api/Dockerfile](file:///C:/sai%20projects/smartcampus/apps/api/Dockerfile) and [.dockerignore](file:///C:/sai%20projects/smartcampus/.dockerignore)
+  - Render blueprint with single-instance constraint and health check: [render.yaml](file:///C:/sai%20projects/smartcampus/render.yaml)
+  - Complete hosting guide covering Neon, Render, Cloudflare Pages, R2 CORS, Clerk, Turnstile, and Resend: [docs/DEPLOYMENT.md](file:///C:/sai%20projects/smartcampus/docs/DEPLOYMENT.md)
+  - Operations runbook covering rollbacks, secret rotation (`OD_SEAL_SECRET_PREVIOUS`), `pg_dump` backups, and emergency passkey revocation: [docs/RUNBOOK.md](file:///C:/sai%20projects/smartcampus/docs/RUNBOOK.md)
+  - Continuous integration workflows and Dependabot: [.github/workflows/ci.yml](file:///C:/sai%20projects/smartcampus/.github/workflows/ci.yml), [.github/workflows/docker.yml](file:///C:/sai%20projects/smartcampus/.github/workflows/docker.yml), and [.github/dependabot.yml](file:///C:/sai%20projects/smartcampus/.github/dependabot.yml)
+  - Post-deploy automated smoke verification script: [scripts/smoke-prod.mjs](file:///C:/sai%20projects/smartcampus/scripts/smoke-prod.mjs) (`pnpm smoke:prod`)
+

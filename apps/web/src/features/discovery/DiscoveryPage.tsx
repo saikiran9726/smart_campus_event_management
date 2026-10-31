@@ -73,6 +73,51 @@ export const DiscoveryPage: React.FC = () => {
     queryKey: ['events', 'infinite', debouncedSearch, selectedCategory, selectedDateFilter],
     initialPageParam: null as string | null,
     queryFn: async ({ pageParam }) => {
+      const mockEvents: EventCardData[] = [
+        {
+          id: 'evt_demo_1',
+          slug: 'autonomous-ai-hackathon-2026',
+          title: 'Autonomous AI Hackathon 2026',
+          description:
+            'A 36-hour flagship hackathon building autonomous agents, verified with Cloudflare and live gate scans.',
+          category: 'Hackathon',
+          startAt: new Date(Date.now() + 86400000).toISOString(),
+          venue: 'Auditorium Main & Turing Lab',
+          pricePaise: 0,
+          capacity: 100,
+          seatsRemaining: 3,
+          clubName: 'Turing Code Club',
+        },
+        {
+          id: 'evt_demo_2',
+          slug: 'nextgen-web-systems',
+          title: 'NextGen Distributed Web Systems with Rust',
+          description:
+            'Deep dive into high-concurrency systems, low-latency architectures, and event queues.',
+          category: 'Tech',
+          startAt: new Date(Date.now() + 172800000).toISOString(),
+          venue: 'Seminar Hall 3',
+          pricePaise: 19900,
+          capacity: 60,
+          seatsRemaining: 18,
+          clubName: 'ACM Student Chapter',
+        },
+        {
+          id: 'evt_demo_3',
+          slug: 'campus-robotics-expo',
+          title: 'Annual Campus Robotics & Drone Expo',
+          description:
+            'Showcase of autonomous rovers, swarm robotics, and aerial imaging vehicles.',
+          category: 'Workshop',
+          startAt: new Date(Date.now() + 259200000).toISOString(),
+          venue: 'Engineering Quadrangle',
+          pricePaise: 0,
+          capacity: 150,
+          seatsRemaining: 65,
+          clubName: 'Robotics Society',
+        },
+      ];
+
       const params = new URLSearchParams();
       if (debouncedSearch) params.set('search', debouncedSearch);
       if (selectedCategory !== 'All') params.set('category', selectedCategory);
@@ -82,61 +127,17 @@ export const DiscoveryPage: React.FC = () => {
 
       try {
         const res = await api.get<{
-          events: EventCardData[];
+          events?: EventCardData[];
+          items?: EventCardData[];
           nextCursor?: string | null;
         }>(`/events?${params.toString()}`, { showToast: false });
+        const list = res.events || res.items || [];
         return {
-          events: res.events || [],
+          events: list.length > 0 ? list : (debouncedSearch ? [] : mockEvents),
           nextCursor: res.nextCursor || null,
         };
       } catch {
         // Fallback demo events when backend endpoint is empty or offline
-        const mockEvents: EventCardData[] = [
-          {
-            id: 'evt_demo_1',
-            slug: 'autonomous-ai-hackathon-2026',
-            title: 'Autonomous AI Hackathon 2026',
-            description:
-              'A 36-hour flagship hackathon building autonomous agents, verified with Cloudflare and live gate scans.',
-            category: 'Hackathon',
-            startAt: new Date(Date.now() + 86400000).toISOString(),
-            venue: 'Auditorium Main & Turing Lab',
-            pricePaise: 0,
-            capacity: 100,
-            seatsRemaining: 3,
-            clubName: 'Turing Code Club',
-          },
-          {
-            id: 'evt_demo_2',
-            slug: 'nextgen-web-systems',
-            title: 'NextGen Distributed Web Systems with Rust',
-            description:
-              'Deep dive into high-concurrency systems, low-latency architectures, and event queues.',
-            category: 'Tech',
-            startAt: new Date(Date.now() + 172800000).toISOString(),
-            venue: 'Seminar Hall 3',
-            pricePaise: 19900,
-            capacity: 60,
-            seatsRemaining: 18,
-            clubName: 'ACM Student Chapter',
-          },
-          {
-            id: 'evt_demo_3',
-            slug: 'campus-robotics-expo',
-            title: 'Annual Campus Robotics & Drone Expo',
-            description:
-              'Showcase of autonomous rovers, swarm robotics, and aerial imaging vehicles.',
-            category: 'Workshop',
-            startAt: new Date(Date.now() + 259200000).toISOString(),
-            venue: 'Engineering Quadrangle',
-            pricePaise: 0,
-            capacity: 150,
-            seatsRemaining: 65,
-            clubName: 'Robotics Society',
-          },
-        ];
-
-        // Filter mock events client-side when using fallback
         let filtered = mockEvents;
         if (debouncedSearch) {
           filtered = filtered.filter((e) =>

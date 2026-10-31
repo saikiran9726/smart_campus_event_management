@@ -99,7 +99,7 @@ describe('Organizer & Faculty UI Suite (Prompt 15)', () => {
       });
 
       // Verify pre-freeze question label input is disabled
-      const labelInput = screen.getByTestId('input-label-q-pre-1');
+      const labelInput = await screen.findByTestId('input-label-q-pre-1');
       expect(labelInput).toBeDisabled();
 
       // Verify required switch is disabled

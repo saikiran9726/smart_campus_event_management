@@ -1,0 +1,90 @@
+name: Eventora CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  test-and-verify:
+    name: Build, Lint, Test & E2E
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: eventora_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://postgres:password@localhost:5432/eventora_test?sslmode=disable
+      DATABASE_SSL: "false"
+      DATABASE_POOL_MAX: 10
+      PORT: 4000
+      PUBLIC_WEB_URL: http://localhost:3000
+      PUBLIC_API_URL: http://localhost:4000
+      VITE_API_URL: http://localhost:4000
+      CLERK_PUBLISHABLE_KEY: pk_test_ci_dummy_publishable_key
+      CLERK_SECRET_KEY: sk_test_ci_dummy_secret_key_at_least_32_chars
+      CLERK_WEBHOOK_SECRET: whsec_dummy_ci_secret_key_long_enough
+      VITE_CLERK_PUBLISHABLE_KEY: pk_test_ci_dummy_publishable_key
+      TURNSTILE_SECRET_KEY: 1x0000000000000000000000000000000AA
+      TURNSTILE_SITE_KEY: 1x00000000000000000000AA
+      VITE_TURNSTILE_SITE_KEY: 1x00000000000000000000AA
+      MAGIC_LINK_SECRET: ci_test_magic_link_secret_at_least_32_chars_long
+      OD_SEAL_SECRET: ci_test_od_seal_secret_at_least_32_chars_long
+      PAYMENT_MODE: sandbox
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9.15.4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Invariant Gate (Zero Placeholders)
+        run: |
+          ! git grep -InE "TODO|FIXME|not implemented|rest of implementation" -- apps packages scripts e2e && echo "NO PLACEHOLDERS FOUND"
+
+      - name: Workspace Typecheck
+        run: pnpm -r typecheck
+
+      - name: Workspace Lint
+        run: pnpm -r lint
+
+      - name: Workspace Build
+        run: pnpm -r build
+
+      - name: Unit & Integration Tests
+        run: pnpm -r test
+
+      - name: Concurrency Engine ACID Trials
+        run: pnpm --filter @eventora/api test:concurrency
+
+      - name: Install Playwright Browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Playwright E2E Tests
+        run: pnpm e2e

@@ -109,7 +109,12 @@ export async function clerkWebhookRoutes(server: FastifyInstance): Promise<void>
 
         // Determine default role: never trust role from webhook payload
         let initialRole: UserRole = UserRole.STUDENT;
-        if (env.ADMIN_EMAIL_DOMAIN_ALLOWLIST) {
+        if (env.INITIAL_ADMIN_EMAILS) {
+          const adminEmails = env.INITIAL_ADMIN_EMAILS.split(',').map((e) => e.trim().toLowerCase());
+          if (adminEmails.includes(primaryEmail.toLowerCase())) {
+            initialRole = UserRole.ADMIN;
+          }
+        } else if (env.ADMIN_EMAIL_DOMAIN_ALLOWLIST) {
           const domains = env.ADMIN_EMAIL_DOMAIN_ALLOWLIST.split(',').map((d) => d.trim());
           const userDomain = primaryEmail.split('@')[1];
           if (userDomain && domains.includes(userDomain)) {
