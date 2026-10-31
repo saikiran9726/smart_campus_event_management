@@ -25,7 +25,7 @@
     "e2e": "echo \"no e2e tests for shared\""
   },
   "dependencies": {
-    "zod": "^3.23.8"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^20.14.10",
