@@ -78,6 +78,13 @@
       "when": 1793369000000,
       "tag": "0010_accreditation_reports_and_analytics_indexes",
       "breakpoints": false
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793369100000,
+      "tag": "0011_clubs_default_channels",
+      "breakpoints": false
     }
   ]
 }

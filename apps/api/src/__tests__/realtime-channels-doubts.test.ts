@@ -801,4 +801,95 @@ describe('Realtime Chat, Club Channels, Doubt Rooms & Role Badges Suite', () => 
       secondSocket.disconnect();
     });
   });
+
+  describe('8. Club Channels Auto-Creation & Concurrency Idempotency (Prompt 23)', () => {
+    it('a club inserted directly with no channels returns three channels from GET /clubs/:id/channels', async () => {
+      const ts = Date.now();
+      const [newClub] = await db
+        .insert(clubs)
+        .values({
+          name: `Channel Test Club ${ts}`,
+          slug: `chan-test-${ts}`,
+          description: 'Club created directly without channels',
+          createdBy: clubOwner.id,
+        })
+        .returning();
+
+      expect(newClub).toBeDefined();
+
+      // Verify club has 0 channels initially
+      const initialChannels = await db
+        .select()
+        .from(clubChannels)
+        .where(eq(clubChannels.clubId, newClub!.id));
+      expect(initialChannels.length).toBe(0);
+
+      // GET /clubs/:clubId/channels triggers auto-creation
+      const res = await server.inject({
+        method: 'GET',
+        url: `/clubs/${newClub!.id}/channels`,
+        headers: { 'x-test-user-id': clubOwner.id },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body.channels).toHaveLength(3);
+      const slugs = body.channels.map((c: any) => c.slug).sort();
+      expect(slugs).toEqual(['announcements', 'events', 'general']);
+    });
+
+    it('two concurrent calls create exactly three channels, not six', async () => {
+      const ts = Date.now();
+      const [newClub] = await db
+        .insert(clubs)
+        .values({
+          name: `Concurrent Channel Club ${ts}`,
+          slug: `concur-chan-${ts}`,
+          description: 'Club for testing race conditions in channel auto-creation',
+          createdBy: clubOwner.id,
+        })
+        .returning();
+
+      expect(newClub).toBeDefined();
+
+      // Launch two concurrent requests
+      const [res1, res2] = await Promise.all([
+        server.inject({
+          method: 'GET',
+          url: `/clubs/${newClub!.id}/channels`,
+          headers: { 'x-test-user-id': clubOwner.id },
+        }),
+        server.inject({
+          method: 'GET',
+          url: `/clubs/${newClub!.id}/channels`,
+          headers: { 'x-test-user-id': clubOwner.id },
+        }),
+      ]);
+
+      expect(res1.statusCode).toBe(200);
+      expect(res2.statusCode).toBe(200);
+      expect(res1.json().channels).toHaveLength(3);
+      expect(res2.json().channels).toHaveLength(3);
+
+      // Verify in DB that exactly 3 channels exist
+      const inDb = await db
+        .select()
+        .from(clubChannels)
+        .where(eq(clubChannels.clubId, newClub!.id));
+      expect(inDb).toHaveLength(3);
+    });
+
+    it('a club with existing channels is unchanged', async () => {
+      // testClub already has channels
+      const res = await server.inject({
+        method: 'GET',
+        url: `/clubs/${testClub.id}/channels`,
+        headers: { 'x-test-user-id': clubOwner.id },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body.channels.length).toBeGreaterThanOrEqual(3);
+    });
+  });
 });

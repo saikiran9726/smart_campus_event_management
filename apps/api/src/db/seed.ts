@@ -209,24 +209,30 @@ export async function runSeed(): Promise<void> {
       .onConflictDoNothing({ target: clubs.slug })
       .returning();
 
-    // 5. Seed Club Members
+    // 5. Seed Club Members and Default Channels
     const codingClubRecord =
       codingClub ??
       (await db.select().from(clubs).where(eq(clubs.slug, 'codechef-devs')))[0];
 
-    if (codingClubRecord) {
+    const roboticsClubRecord =
+      roboticsClub ??
+      (await db.select().from(clubs).where(eq(clubs.slug, 'robotics-guild')))[0];
+
+    for (const clubRecord of [codingClubRecord, roboticsClubRecord]) {
+      if (!clubRecord) continue;
+
       await db
         .insert(clubMembers)
         .values([
           {
-            clubId: codingClubRecord.id,
+            clubId: clubRecord.id,
             userId: organizerId,
             role: ClubMemberRole.OWNER,
           },
           ...(studentId
             ? [
                 {
-                  clubId: codingClubRecord.id,
+                  clubId: clubRecord.id,
                   userId: studentId,
                   role: ClubMemberRole.MEMBER,
                 },
@@ -235,25 +241,33 @@ export async function runSeed(): Promise<void> {
         ])
         .onConflictDoNothing();
 
-      // Seed Club Channels
+      // Seed Default Club Channels (Announcements, General, Events)
       await db
         .insert(clubChannels)
         .values([
           {
-            clubId: codingClubRecord.id,
+            clubId: clubRecord.id,
             kind: ChannelKind.ANNOUNCEMENTS,
-            name: 'Club Announcements',
+            name: 'Announcements',
             slug: 'announcements',
           },
           {
-            clubId: codingClubRecord.id,
+            clubId: clubRecord.id,
             kind: ChannelKind.GENERAL,
-            name: 'General Discussion',
+            name: 'General',
             slug: 'general',
+          },
+          {
+            clubId: clubRecord.id,
+            kind: ChannelKind.EVENTS,
+            name: 'Events',
+            slug: 'events',
           },
         ])
         .onConflictDoNothing();
+    }
 
+    if (codingClubRecord) {
       // 6. Seed Proposal and Event
       const now = new Date();
       const startTime = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);

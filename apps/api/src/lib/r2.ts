@@ -17,7 +17,7 @@ export interface StorageClientConfig {
 }
 
 export function createStorageClient(config?: StorageClientConfig): S3Client {
-  const s3Endpoint = config?.endpoint ?? env.S3_ENDPOINT;
+  const s3Endpoint = config && 'endpoint' in config ? config.endpoint : env.S3_ENDPOINT;
   const s3Region = config?.region ?? env.S3_REGION ?? 'auto';
   const accessKeyId = config?.accessKeyId ?? env.R2_ACCESS_KEY_ID;
   const secretAccessKey = config?.secretAccessKey ?? env.R2_SECRET_ACCESS_KEY;

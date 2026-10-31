@@ -331,7 +331,7 @@ export const RegisterDialog: React.FC<RegisterDialogProps> = ({
         {outcome === 'PAYMENT_REQUIRED' && (
           <SandboxCheckout
             eventId={eventId}
-            registrationId={(activeRegistration?.id as string) || 'reg_demo_1'}
+            registrationId={(activeRegistration?.id as string) || ''}
             eventTitle={eventTitle}
             amountPaise={pricePaise || 19900}
             onSuccess={() => setOutcome('CONFIRMED')}

@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { RoleBadge } from '@/components/primitives/role-badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { toast } from '@/components/ui/use-toast';
+import { cn } from '@/lib/utils';
 import {
   User,
   Mail,
@@ -29,9 +30,10 @@ export const ProfilePage: React.FC = () => {
   const [fullName, setFullName] = useState(user?.fullName || clerkUser?.fullName || '');
   const [rollNumber, setRollNumber] = useState(user?.rollNumber || '');
   const [department, setDepartment] = useState(user?.department || '');
-  const [collegeYear, setCollegeYear] = useState<number | string>(user?.collegeYear || 3);
+  const [year, setYear] = useState<number | string>(user?.year ?? user?.yearOfStudy ?? 3);
   const [phone, setPhone] = useState(user?.phone || '');
   const [isSaving, setIsSaving] = useState(false);
+  const [rollNumberError, setRollNumberError] = useState<string | null>(null);
 
   // Sync state if user changes
   React.useEffect(() => {
@@ -39,10 +41,10 @@ export const ProfilePage: React.FC = () => {
       setFullName(user.fullName || clerkUser?.fullName || '');
       setRollNumber(user.rollNumber || '');
       setDepartment(user.department || '');
-      setCollegeYear(user.collegeYear || 3);
+      setYear(user.year ?? user.yearOfStudy ?? 3);
       setPhone(user.phone || '');
     }
-  }, [user, clerkUser]);
+  }, [user?.id]);
 
   if (!isSignedIn) {
     return (
@@ -65,30 +67,37 @@ export const ProfilePage: React.FC = () => {
     );
   }
 
-  const strikesCount = 0; // Local DB user strikes
+  const strikesCount = user?.strikeCount ?? user?.strikesCount ?? 0;
   const isCooldownActive = !!user?.cooldownUntil && new Date(user.cooldownUntil) > new Date();
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
+    setRollNumberError(null);
     try {
-      await api.patch('/me', {
-        fullName,
+      const payload: Record<string, unknown> = {
+        fullName: fullName.trim(),
         rollNumber: rollNumber.trim().toUpperCase(),
-        department,
-        collegeYear: Number(collegeYear),
-        phone,
-      });
+        department: department.trim() || null,
+        year: year ? Number(year) : null,
+        phone: phone.trim() || null,
+      };
+
+      await api.patch('/me', payload);
+
       toast({
         title: 'Profile Updated',
         description: 'Your verified campus details have been saved.',
       });
       refetchUser();
-    } catch {
-      toast({
-        title: 'Profile Saved (Demo)',
-        description: 'Profile updated successfully.',
-      });
+    } catch (err: unknown) {
+      if (err && typeof err === 'object' && 'status' in err && (err as { status: number }).status === 409) {
+        const msg =
+          'message' in err && typeof (err as { message: string }).message === 'string'
+            ? (err as { message: string }).message
+            : 'Roll number is already registered to another user.';
+        setRollNumberError(msg);
+      }
     } finally {
       setIsSaving(false);
     }
@@ -202,11 +211,20 @@ export const ProfilePage: React.FC = () => {
                 <Input
                   id="rollNumber"
                   value={rollNumber}
-                  onChange={(e) => setRollNumber(e.target.value)}
+                  onChange={(e) => {
+                    setRollNumber(e.target.value);
+                    if (rollNumberError) setRollNumberError(null);
+                  }}
                   placeholder="e.g. 22CS1049"
-                  className="h-11 font-mono uppercase"
+                  className={cn("h-11 font-mono uppercase", rollNumberError && "border-destructive focus-visible:ring-destructive")}
+                  aria-invalid={!!rollNumberError}
                   required
                 />
+                {rollNumberError && (
+                  <p className="text-xs text-destructive font-medium mt-1" role="alert" data-testid="roll-number-error">
+                    {rollNumberError}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-1.5">
@@ -230,9 +248,9 @@ export const ProfilePage: React.FC = () => {
                   id="collegeYear"
                   type="number"
                   min={1}
-                  max={5}
-                  value={collegeYear}
-                  onChange={(e) => setCollegeYear(e.target.value)}
+                  max={6}
+                  value={year}
+                  onChange={(e) => setYear(e.target.value)}
                   className="h-11 tnum"
                 />
               </div>

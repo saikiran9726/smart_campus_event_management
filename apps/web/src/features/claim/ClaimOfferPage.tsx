@@ -24,24 +24,16 @@ export const ClaimOfferPage: React.FC = () => {
   const [ticketToken, setTicketToken] = useState<string | null>(null);
 
   // Fetch offer status
-  const { data: offer, isLoading } = useQuery<ClaimOfferData>({
+  const { data: offer, isLoading, isError: isOfferError } = useQuery<ClaimOfferData>({
     queryKey: ['claim', registrationId],
     queryFn: async () => {
-      try {
-        const res = await api.get<{ offer: ClaimOfferData }>(
-          `/waitlist/${registrationId}/status`,
-          { showToast: false }
-        );
-        return res.offer;
-      } catch {
-        return {
-          registrationId: registrationId || 'reg_claim_demo',
-          eventId: 'evt_sample_ai',
-          eventTitle: 'Autonomous AI Hackathon 2026',
-          offerExpiresAt: new Date(Date.now() + 1000 * 60 * 18).toISOString(), // 18 mins left
-        };
-      }
+      const res = await api.get<{ offer: ClaimOfferData }>(
+        `/waitlist/${registrationId}/status`,
+        { showToast: false }
+      );
+      return res.offer;
     },
+    enabled: !!registrationId,
   });
 
   const expiresAt = offer?.offerExpiresAt || new Date(Date.now() + 1000 * 60 * 15).toISOString();
@@ -53,7 +45,7 @@ export const ClaimOfferPage: React.FC = () => {
         `/waitlist/${registrationId}/claim`
       );
       setIsClaimed(true);
-      setTicketToken(res.ticketToken || 'ev_tok_claimed_seat_pass');
+      setTicketToken(res.ticketToken || null);
       toast({
         title: 'Seat Claimed!',
         description: 'Your registration is confirmed and your pass is issued.',
@@ -61,10 +53,6 @@ export const ClaimOfferPage: React.FC = () => {
     } catch (err: unknown) {
       if (err instanceof ApiError && err.code === 'OFFER_EXPIRED') {
         setIsExpired(true);
-      } else {
-        // Fallback for demo
-        setIsClaimed(true);
-        setTicketToken('ev_tok_claimed_seat_pass');
       }
     } finally {
       setIsClaiming(false);

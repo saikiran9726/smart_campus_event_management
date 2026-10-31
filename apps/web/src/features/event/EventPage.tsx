@@ -85,93 +85,12 @@ export const EventPage: React.FC = () => {
   const { data: event, isLoading } = useQuery<EventDetailData>({
     queryKey: ['events', slug, 'full'],
     queryFn: async () => {
-      try {
-        const res = await api.get<{ event: EventDetailData }>(`/events/${slug}`, {
-          showToast: false,
-        });
-        return res.event;
-      } catch {
-        // Fallback rich mock data for presentation & tests
-        return {
-          id: 'evt_sample_ai',
-          slug: slug || 'autonomous-ai-hackathon-2026',
-          title: 'Autonomous AI Hackathon 2026',
-          narrativeMarkdown: `
-# Welcome to Eventora AI Sprint 2026
-
-Build production-grade autonomous agent systems, multi-agent workflows, and verifiable smart campus tools.
-
-### What you will build:
-* **Autonomous Task Orchestration**: Realtime event routing, concurrency safeguards, and self-healing systems.
-* **Smart Campus Integration**: Gate checks, atomic ticketing, and cryptographically verified OD passes.
-* **Evaluation Standards**: Scalability under 100+ concurrent scans, zero layout shift, and automated WCAG accessibility.
-
-### Prizes & Recognition:
-* **1st Place**: ₹50,000 cash grant + University Innovation Fellowship.
-* **2nd Place**: ₹25,000 cloud credits + Fast-track incubation.
-* **3rd Place**: ₹10,000 developer gear + Official Campus Accreditation Letter.
-          `.trim(),
-          category: 'Hackathon',
-          status: 'PUBLISHED',
-          startAt: new Date(Date.now() + 86400000).toISOString(),
-          endAt: new Date(Date.now() + 172800000).toISOString(),
-          registrationClosesAt: new Date(Date.now() + 43200000).toISOString(),
-          venue: 'Auditorium Main & Turing Computer Lab',
-          venueMapUrl: 'https://maps.google.com/?q=Campus+Main+Auditorium',
-          pricePaise: 0,
-          capacity: 100,
-          seatsRemaining: 15,
-          isCompetition: true,
-          minTeamSize: 2,
-          maxTeamSize: 4,
-          club: {
-            id: 'club_turing',
-            name: 'Turing Code Club',
-            description: 'Premier student-led systems and software engineering collective.',
-            leadName: 'Alex Rivera',
-          },
-          agenda: [
-            { time: '09:00 AM', title: 'Check-In & Gate Verification Scan' },
-            { time: '10:00 AM', title: 'Opening Keynote & Problem Statements Release' },
-            { time: '01:00 PM', title: 'Atomic Lunch Redemption & Mentorship Sync' },
-            { time: '06:00 PM', title: 'Interim Code Check & Teammate Pool Review' },
-          ],
-          reviews: {
-            average: 4.9,
-            count: 38,
-            histogram: { 5: 32, 4: 5, 3: 1, 2: 0, 1: 0 },
-          },
-          winners: [
-            {
-              rank: 1,
-              teamName: 'AgentZero',
-              projectTitle: 'Realtime Smart Campus Gate AI',
-              abstract: 'Sub-second optical scanner pipeline verifying multi-channel attendance tokens.',
-              demoUrl: 'https://agentzero.campus.edu',
-              repoUrl: 'https://github.com/agentzero/gate',
-              members: ['Ananya Sharma', 'Rohan Verma', 'Kavita Das'],
-              prize: '₹50,000 Grant',
-            },
-            {
-              rank: 2,
-              teamName: 'MeshGuard',
-              projectTitle: 'P2P Offline Attendance Verification',
-              abstract: 'Distributed mesh network protocol syncing tickets without cellular connectivity.',
-              members: ['Kiran Patel', 'Siddharth Rao'],
-              prize: '₹25,000 Credits',
-            },
-            {
-              rank: 3,
-              teamName: 'DoubtDesk',
-              projectTitle: 'Realtime Socket.IO Q&A Queue',
-              abstract: 'Interactive lecture and hackathon doubt channel with role badges.',
-              members: ['Meera Nambiar', 'Vikram Sen'],
-              prize: '₹10,000 Gear',
-            },
-          ],
-        };
-      }
+      const res = await api.get<{ event: EventDetailData }>(`/events/${slug}`, {
+        showToast: false,
+      });
+      return res.event;
     },
+    enabled: !!slug,
   });
 
   // Real-time socket seats hook

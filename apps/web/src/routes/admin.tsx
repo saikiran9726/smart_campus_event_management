@@ -13,11 +13,7 @@ export const AdminPage: React.FC = () => {
           showToast: false,
         });
       } catch {
-        return {
-          totalClubs: 18,
-          activeEvents: 12,
-          totalCheckIns: 1420,
-        };
+        return null;
       }
     },
   });

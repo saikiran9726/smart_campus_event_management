@@ -15,11 +15,7 @@ export const CommunityPage: React.FC = () => {
         });
         return res.channels || [];
       } catch {
-        return [
-          { id: 'ch_announcements', name: 'announcements', type: 'CLUB' },
-          { id: 'ch_general', name: 'general', type: 'CLUB' },
-          { id: 'ch_doubts', name: 'hackathon-doubt-room', type: 'DOUBT' },
-        ];
+        return [];
       }
     },
   });

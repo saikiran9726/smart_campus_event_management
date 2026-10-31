@@ -108,6 +108,7 @@ export const ERROR_MESSAGES: Record<string, { title: string; defaultMessage: str
 export interface FetchOptions extends RequestInit {
   showToast?: boolean;
   token?: string | null;
+  responseType?: 'json' | 'text' | 'blob';
 }
 
 export async function apiFetch<T = unknown>(
@@ -209,6 +210,10 @@ export async function apiFetch<T = unknown>(
     return {} as T;
   }
 
+  if (options.responseType === 'blob') {
+    return (await response.blob()) as unknown as T;
+  }
+
   const contentType = response.headers.get('content-type');
   if (contentType && contentType.includes('application/json')) {
     return (await response.json()) as T;
@@ -220,6 +225,9 @@ export async function apiFetch<T = unknown>(
 export const api = {
   get: <T = unknown>(endpoint: string, options?: FetchOptions) =>
     apiFetch<T>(endpoint, { ...options, method: 'GET' }),
+
+  getBlob: (endpoint: string, options?: FetchOptions) =>
+    apiFetch<Blob>(endpoint, { ...options, method: 'GET', responseType: 'blob' }),
 
   post: <T = unknown>(endpoint: string, body?: unknown, options?: FetchOptions) =>
     apiFetch<T>(endpoint, {

@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import { ChannelKind } from '@eventora/shared';
 import { db } from '../../db/client';
 import { clubChannels, clubMembers, clubs } from '../../db/schema';
 import { AppError } from '../../lib/app-error';
@@ -33,7 +34,12 @@ export async function channelRoutes(server: FastifyInstance): Promise<void> {
     '/clubs/:clubId/channels',
     { preHandler: [requireAuth] },
     async (request: FastifyRequest, reply: FastifyReply) => {
-      const { clubId } = request.params as { clubId: string };
+      const params = request.params as { clubId?: string; id?: string };
+      const clubId = params.clubId || params.id;
+
+      if (!clubId) {
+        throw new AppError('VALIDATION_FAILED', 'Club ID is required.', 400);
+      }
 
       const [club] = await db
         .select({ id: clubs.id })
@@ -45,7 +51,7 @@ export async function channelRoutes(server: FastifyInstance): Promise<void> {
         throw new AppError('NOT_FOUND', `Club '${clubId}' not found.`, 404);
       }
 
-      const channels = await db
+      let channels = await db
         .select({
           id: clubChannels.id,
           clubId: clubChannels.clubId,
@@ -56,6 +62,47 @@ export async function channelRoutes(server: FastifyInstance): Promise<void> {
         })
         .from(clubChannels)
         .where(eq(clubChannels.clubId, clubId));
+
+      // If club has 0 channels, create the 3 defaults atomically in a transaction
+      if (channels.length === 0) {
+        await db.transaction(async (tx) => {
+          await tx
+            .insert(clubChannels)
+            .values([
+              {
+                clubId,
+                kind: ChannelKind.ANNOUNCEMENTS,
+                name: 'Announcements',
+                slug: 'announcements',
+              },
+              {
+                clubId,
+                kind: ChannelKind.GENERAL,
+                name: 'General',
+                slug: 'general',
+              },
+              {
+                clubId,
+                kind: ChannelKind.EVENTS,
+                name: 'Events',
+                slug: 'events',
+              },
+            ])
+            .onConflictDoNothing();
+        });
+
+        channels = await db
+          .select({
+            id: clubChannels.id,
+            clubId: clubChannels.clubId,
+            eventId: clubChannels.eventId,
+            kind: clubChannels.kind,
+            name: clubChannels.name,
+            slug: clubChannels.slug,
+          })
+          .from(clubChannels)
+          .where(eq(clubChannels.clubId, clubId));
+      }
 
       return reply.status(200).send({ channels });
     }

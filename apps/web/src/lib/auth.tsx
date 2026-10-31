@@ -20,9 +20,14 @@ export interface DbUser {
   fullName: string;
   rollNumber?: string | null;
   department?: string | null;
+  year?: number | null;
+  yearOfStudy?: number | null;
   collegeYear?: number | null;
   phone?: string | null;
   role: 'STUDENT' | 'FACULTY' | 'ADMIN' | 'ORGANIZER';
+  strikeCount?: number;
+  strikesCount?: number;
+  consecutiveNoShows?: number;
   cooldownUntil?: string | null;
   createdAt: string;
 }

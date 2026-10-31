@@ -57,9 +57,8 @@ export const CommunityPage: React.FC = () => {
           setSelectedClubId(list[0]!.id);
         }
       } catch {
-        // Fallback demo club if not yet seeded
-        setClubs([{ id: 'club-default', name: 'ACM Student Chapter', slug: 'acm' }]);
-        setSelectedClubId('club-default');
+        setClubs([]);
+        setSelectedClubId(null);
       }
     };
 
@@ -91,27 +90,25 @@ export const CommunityPage: React.FC = () => {
           `/clubs/${selectedClubId}/channels`,
           { showToast: false }
         );
-        const list = res.channels || [];
+        const list = res?.channels || [];
         setChannels(list);
-        if (list.length > 0 && !activeChannelId) {
-          setActiveChannelId(list[0]!.id);
+        if (list.length > 0) {
+          if (!activeChannelId || !list.some((c) => c.id === activeChannelId)) {
+            setActiveChannelId(list[0]!.id);
+          }
+        } else {
+          setActiveChannelId(null);
         }
       } catch {
-        // Default standard channels if fresh club
-        const defaults: ChannelSummary[] = [
-          { id: `${selectedClubId}-announcements`, name: 'announcements', kind: 'CLUB' },
-          { id: `${selectedClubId}-general`, name: 'general', kind: 'CLUB' },
-          { id: `${selectedClubId}-events`, name: 'events', kind: 'CLUB' },
-        ];
-        setChannels(defaults);
-        if (!activeChannelId) setActiveChannelId(defaults[0]!.id);
+        setChannels([]);
+        setActiveChannelId(null);
       } finally {
         setIsLoading(false);
       }
     };
 
     void fetchChannels();
-  }, [selectedClubId]);
+  }, [selectedClubId, activeChannelId]);
 
   // 3. Listen to socket message and read events to update unread counters
   useEffect(() => {
@@ -240,6 +237,13 @@ export const CommunityPage: React.FC = () => {
                 <div className="h-10 bg-muted/40 rounded-xl animate-pulse" />
                 <div className="h-10 bg-muted/40 rounded-xl animate-pulse" />
                 <div className="h-10 bg-muted/40 rounded-xl animate-pulse" />
+              </div>
+            ) : channels.length === 0 ? (
+              <div className="p-6 text-center space-y-1.5" data-testid="empty-channels-state">
+                <p className="text-xs font-semibold text-muted-foreground">No channels available</p>
+                <p className="text-[11px] text-muted-foreground/70">
+                  This club does not have any active channels yet.
+                </p>
               </div>
             ) : (
               channels.map((chan) => {
