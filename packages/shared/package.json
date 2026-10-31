@@ -29,7 +29,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.14.10",
-    "tsup": "^8.2.4",
+    "tsup": "^9.0.0",
     "typescript": "^5.5.4",
     "vitest": "^2.0.5"
   }
