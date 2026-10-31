@@ -52,6 +52,7 @@ describe('Production Hardening & Connectivity Verification Suite (Prompt 19)', (
         DATABASE_URL: '',
         PUBLIC_WEB_URL: 'http://insecure-domain.edu',
         WHATSAPP_PROVIDER: 'baileys',
+        R2_ACCOUNT_ID: 'prod_r2_account_id',
       };
 
       const errors = getProductionEnvErrors(invalidEnv);

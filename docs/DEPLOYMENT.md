@@ -5,7 +5,7 @@ This guide details the production deployment architecture and step-by-step setup
 - **Backend API**: Node.js 22 container built from [`apps/api/Dockerfile`](file:///C:/sai%20projects/smartcampus/apps/api/Dockerfile) managed by Docker Compose
 - **Edge Ingress**: Cloudflare Tunnel (`cloudflared` container) routing `api.campus.example.com` to `http://api:4000` with Zero Trust DDoS protection and automatic TLS
 - **Frontend Web**: Cloudflare Pages serving [`apps/web/dist`](file:///C:/sai%20projects/smartcampus/apps/web/dist) at `campus.example.com`
-- **Object Storage**: Cloudflare R2 bucket with strict CORS and CDN delivery
+- **Object Storage**: S3-compatible object storage (Cloudflare R2 or Supabase Storage) with strict CORS and CDN delivery
 - **Auth & Identity**: Clerk Production Instance with webhook integration
 - **Bot Protection**: Cloudflare Turnstile (Managed Challenge)
 - **Email Delivery**: Resend with custom verified campus domain
@@ -58,7 +58,7 @@ This guide details the production deployment architecture and step-by-step setup
 
 To prevent circular dependencies across DNS, webhooks, and CORS:
 
-1. **Cloudflare R2 Bucket**: Create bucket, configure CORS policy, and generate S3-compatible credentials.
+1. **Object Storage (Cloudflare R2 or Supabase)**: Create bucket, configure CORS policy, and generate S3-compatible credentials.
 2. **Clerk Production**: Create production application, obtain API keys, and prepare webhook endpoints.
 3. **Cloudflare Turnstile**: Create production Managed Challenge widget for campus domains.
 4. **Resend Email**: Verify domain DNS records (SPF, DKIM, MX) and generate production API key.
@@ -97,6 +97,19 @@ To prevent circular dependencies across DNS, webhooks, and CORS:
 ]
 ```
 4. Go to **R2** > **Manage R2 API Tokens**, create a token with **Object Read & Write** permissions scoped to `eventora-vault-prod`, and record `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY`.
+
+#### Using Supabase Storage (Alternative)
+Eventora supports any S3-compatible storage service, including Supabase Storage:
+1. In your Supabase Dashboard, create a bucket named `eventora-vault-prod`. Make it public if using Supabase public CDN URLs.
+2. In **Project Settings** > **Storage**, retrieve your S3 Connection credentials:
+   - `S3_ENDPOINT`: `https://<project-ref>.supabase.co/storage/v1/s3`
+   - `S3_REGION`: Storage region (e.g., `us-east-1` or `auto`)
+   - `R2_ACCESS_KEY_ID`: Your S3 Access Key ID
+   - `R2_SECRET_ACCESS_KEY`: Your S3 Secret Access Key
+   - `R2_BUCKET`: `eventora-vault-prod`
+   - `R2_PUBLIC_BASE_URL`: `https://<project-ref>.supabase.co/storage/v1/object/public/eventora-vault-prod`
+   *(When `S3_ENDPOINT` is set, `R2_ACCOUNT_ID` is optional and omitted).*
+3. **CORS Configuration**: Configure CORS on the Supabase bucket to allow `PUT`, `GET`, and `HEAD` requests from your frontend origins (`https://campus.example.com`, `https://*.pages.dev`) with allowed headers `Content-Type` and `Content-Length`.
 
 ---
 
@@ -221,11 +234,13 @@ To ensure disaster recovery without third-party dependencies, schedule the inclu
 | `OD_SEAL_SECRET` | API | *Required (Secret)* | Minimum 32-character HMAC secret for signing On-Duty letters |
 | `OD_SEAL_SECRET_PREVIOUS` | API | *Optional* | Prior secret preserved during zero-downtime key rotation |
 | `PAYMENT_MODE` | API | `sandbox` | Strict invariant: live real-money payments are prohibited |
-| `R2_ACCOUNT_ID` | API | *Required (Secret)* | Cloudflare account ID for R2 storage |
+| `S3_ENDPOINT` | API | *Optional* | Custom S3 endpoint URL (e.g., Supabase Storage: `https://<ref>.supabase.co/storage/v1/s3`). When set, `R2_ACCOUNT_ID` is optional |
+| `S3_REGION` | API | *Optional* (default: `auto`) | S3 region for custom storage endpoint (e.g., `us-east-1` or `auto`) |
+| `R2_ACCOUNT_ID` | API | *Required unless S3_ENDPOINT is set (Secret)* | Cloudflare account ID for R2 storage |
 | `R2_ACCESS_KEY_ID` | API | *Required (Secret)* | S3-compatible Access Key ID |
 | `R2_SECRET_ACCESS_KEY` | API | *Required (Secret)* | S3-compatible Secret Access Key |
-| `R2_BUCKET_NAME` | API | `eventora-vault-prod` | Name of R2 bucket storing certificates and resources |
-| `R2_PUBLIC_DOMAIN` | API | *Required* (HTTPS) | Public CDN domain serving R2 files (`https://vault.campus.example.com`) |
+| `R2_BUCKET` | API | `eventora-vault-prod` | Name of S3/R2 bucket storing certificates and resources |
+| `R2_PUBLIC_BASE_URL` | API | *Required* (HTTPS) | Public CDN domain serving uploaded files (`https://vault.campus.example.com`) |
 | `RESEND_API_KEY` | API | *Required (Secret)* | Resend API key for transactional email delivery (`re_...`) |
 | `COMM_EMAIL_FROM` | API | *Required* | Sender email format: `"Eventora <events@campus.example.com>"` |
 | `WHATSAPP_PROVIDER` | API | `disabled` | Set to `disabled` or `meta` (baileys prohibited in production) |

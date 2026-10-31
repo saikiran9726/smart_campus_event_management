@@ -21,8 +21,10 @@ const envSchema = z.object({
   CLERK_SECRET_KEY: z.string().min(1, 'CLERK_SECRET_KEY is required'),
   CLERK_WEBHOOK_SECRET: z.string().min(1, 'CLERK_WEBHOOK_SECRET is required'),
 
-  // Cloudflare R2
-  R2_ACCOUNT_ID: z.string().default('placeholder_r2_account_id'),
+  // Storage: Cloudflare R2 or S3-Compatible (e.g. Supabase Storage)
+  S3_ENDPOINT: z.string().url().optional(),
+  S3_REGION: z.string().default('auto'),
+  R2_ACCOUNT_ID: z.string().optional(),
   R2_ACCESS_KEY_ID: z.string().default('placeholder_r2_access_key_id'),
   R2_SECRET_ACCESS_KEY: z.string().default('placeholder_r2_secret_access_key'),
   R2_BUCKET: z.string().default('eventora-assets'),
@@ -70,6 +72,14 @@ const envSchema = z.object({
     .union([z.boolean(), z.string()])
     .transform((val) => val === true || val === 'true')
     .default(false),
+}).superRefine((data, ctx) => {
+  if (!data.S3_ENDPOINT && (!data.R2_ACCOUNT_ID || data.R2_ACCOUNT_ID.trim() === '')) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'R2_ACCOUNT_ID is required when S3_ENDPOINT is not set',
+      path: ['R2_ACCOUNT_ID'],
+    });
+  }
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -122,6 +132,9 @@ export function getProductionEnvErrors(e: Record<string, any>): string[] {
   }
   if (e.WHATSAPP_PROVIDER === 'baileys') {
     errors.push('WHATSAPP_PROVIDER cannot be "baileys" in production');
+  }
+  if (!e.S3_ENDPOINT && (!e.R2_ACCOUNT_ID || String(e.R2_ACCOUNT_ID).trim() === '')) {
+    errors.push('R2_ACCOUNT_ID is required when S3_ENDPOINT is not set');
   }
   return errors;
 }

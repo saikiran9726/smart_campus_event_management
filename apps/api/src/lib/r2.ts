@@ -8,14 +8,51 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { env } from '../env';
 
-export const r3Client = new S3Client({
-  region: 'auto',
-  endpoint: `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-  credentials: {
-    accessKeyId: env.R2_ACCESS_KEY_ID,
-    secretAccessKey: env.R2_SECRET_ACCESS_KEY,
-  },
-});
+export interface StorageClientConfig {
+  endpoint?: string;
+  region?: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
+  accountId?: string;
+}
+
+export function createStorageClient(config?: StorageClientConfig): S3Client {
+  const s3Endpoint = config?.endpoint ?? env.S3_ENDPOINT;
+  const s3Region = config?.region ?? env.S3_REGION ?? 'auto';
+  const accessKeyId = config?.accessKeyId ?? env.R2_ACCESS_KEY_ID;
+  const secretAccessKey = config?.secretAccessKey ?? env.R2_SECRET_ACCESS_KEY;
+  const accountId = config?.accountId ?? env.R2_ACCOUNT_ID;
+
+  if (s3Endpoint) {
+    return new S3Client({
+      endpoint: s3Endpoint,
+      region: s3Region,
+      forcePathStyle: true,
+      credentials: {
+        accessKeyId,
+        secretAccessKey,
+      },
+    });
+  }
+
+  return new S3Client({
+    region: 'auto',
+    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId,
+      secretAccessKey,
+    },
+  });
+}
+
+export const r3Client = createStorageClient();
+
+export function getStorageClient(): S3Client {
+  if (env.S3_ENDPOINT) {
+    return createStorageClient();
+  }
+  return r3Client;
+}
 
 export interface PresignPutParams {
   key: string;
@@ -46,10 +83,13 @@ export function buildKey(
 }
 
 /**
- * Generates an R2 presigned PUT upload URL valid for 10 minutes.
+ * Generates an R2/S3 presigned PUT upload URL valid for 10 minutes.
  * Both ContentType and ContentLength are signed.
  */
-export async function presignPut(params: PresignPutParams): Promise<string> {
+export async function presignPut(
+  params: PresignPutParams,
+  client: S3Client = getStorageClient()
+): Promise<string> {
   const expiresIn = params.expiresInSeconds ?? 600; // 10 minutes default
 
   const command = new PutObjectCommand({
@@ -59,24 +99,22 @@ export async function presignPut(params: PresignPutParams): Promise<string> {
     ContentLength: params.sizeBytes,
   });
 
-  return getSignedUrl(r3Client, command, { expiresIn });
+  return getSignedUrl(client, command, { expiresIn });
 }
 
 /**
- * Generates an R2 presigned GET download URL valid for 1 hour by default.
+ * Generates an R2/S3 presigned GET download URL valid for 1 hour by default.
  */
 export async function presignGet(
   key: string,
-  expiresInSeconds = 3600
+  expiresInSeconds = 3600,
+  client: S3Client = getStorageClient()
 ): Promise<string> {
-  if (env.NODE_ENV === 'test') {
-    return `https://r2.mock.download/${encodeURIComponent(key)}`;
-  }
   const command = new GetObjectCommand({
     Bucket: env.R2_BUCKET,
     Key: key,
   });
-  return getSignedUrl(r3Client, command, { expiresIn: expiresInSeconds });
+  return getSignedUrl(client, command, { expiresIn: expiresInSeconds });
 }
 
 /**
@@ -89,10 +127,11 @@ export function publicUrl(key: string): string {
 }
 
 /**
- * Queries R2 object metadata to verify existence and size.
+ * Queries R2/S3 object metadata to verify existence and size.
  */
 export async function headObject(
-  key: string
+  key: string,
+  client: S3Client = getStorageClient()
 ): Promise<{ contentLength: number; contentType?: string } | null> {
   if (env.NODE_ENV === 'test' && key.startsWith('test-')) {
     if (key.includes('notfound')) {
@@ -109,7 +148,7 @@ export async function headObject(
       Bucket: env.R2_BUCKET,
       Key: key,
     });
-    const res = await r3Client.send(command);
+    const res = await client.send(command);
     return {
       contentLength: res.ContentLength ?? 0,
       contentType: res.ContentType,
