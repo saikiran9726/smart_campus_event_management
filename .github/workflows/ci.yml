@@ -124,3 +124,16 @@ jobs:
 
       - name: Playwright E2E Tests
         run: pnpm e2e
+
+      - name: Evidence-Based Playwright Crawl (Non-blocking)
+        continue-on-error: true
+        run: pnpm playwright test e2e/crawl.spec.ts
+
+      - name: Upload Crawl Report & Screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crawl-report
+          path: |
+            docs/CRAWL-REPORT.md
+            test-results/crawl/

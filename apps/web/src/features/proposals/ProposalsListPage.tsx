@@ -37,10 +37,10 @@ export const ProposalsListPage: React.FC = () => {
   const navigate = useNavigate();
 
   const { data: proposals, isLoading } = useQuery<ProposalItem[]>({
-    queryKey: ['faculty', 'proposals'],
+    queryKey: ['organizer', 'proposals'],
     queryFn: async () => {
       try {
-        const res = await api.get<{ items: ProposalItem[] }>('/faculty/proposals');
+        const res = await api.get<{ items: ProposalItem[] }>('/organizer/proposals');
         return res.items;
       } catch {
         return [];

@@ -11,6 +11,7 @@ import {
 import { db, withTx } from '../../db/client';
 import {
   avResources,
+  clubMembers,
   clubs,
   eventAvBookings,
   eventProposals,
@@ -716,6 +717,79 @@ export async function proposalRoutes(server: FastifyInstance): Promise<void> {
 
     return reply.status(200).send({ items: results });
   });
+
+  // 4.5. Organizer Proposals List (for club owners/admins, faculty, and system admin)
+  server.get(
+    '/organizer/proposals',
+    { preHandler: [requireAuth] },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const user = request.user;
+      if (!user) {
+        throw new AppError('UNAUTHENTICATED', 'Authentication required.', 401);
+      }
+
+      // If global ADMIN or FACULTY, return all proposals
+      if (user.role === UserRole.ADMIN || user.role === UserRole.FACULTY) {
+        const proposals = await db
+          .select({
+            id: eventProposals.id,
+            clubId: eventProposals.clubId,
+            title: eventProposals.title,
+            description: eventProposals.description,
+            expectedAttendance: eventProposals.expectedAttendance,
+            venueId: eventProposals.venueId,
+            startAt: eventProposals.startAt,
+            endAt: eventProposals.endAt,
+            status: eventProposals.status,
+            decidedAt: eventProposals.decidedAt,
+            decisionNote: eventProposals.decisionNote,
+            createdAt: eventProposals.createdAt,
+          })
+          .from(eventProposals)
+          .orderBy(desc(eventProposals.createdAt));
+
+        return reply.status(200).send({ items: proposals });
+      }
+
+      // Otherwise, get clubs where user has OWNER or ADMIN role
+      const userClubs = await db
+        .select({ clubId: clubMembers.clubId })
+        .from(clubMembers)
+        .where(
+          and(
+            eq(clubMembers.userId, user.id),
+            inArray(clubMembers.role, [ClubMemberRole.OWNER, ClubMemberRole.ADMIN])
+          )
+        );
+
+      const allowedClubIds = userClubs.map((m) => m.clubId);
+
+      if (allowedClubIds.length === 0) {
+        return reply.status(200).send({ items: [] });
+      }
+
+      const proposals = await db
+        .select({
+          id: eventProposals.id,
+          clubId: eventProposals.clubId,
+          title: eventProposals.title,
+          description: eventProposals.description,
+          expectedAttendance: eventProposals.expectedAttendance,
+          venueId: eventProposals.venueId,
+          startAt: eventProposals.startAt,
+          endAt: eventProposals.endAt,
+          status: eventProposals.status,
+          decidedAt: eventProposals.decidedAt,
+          decisionNote: eventProposals.decisionNote,
+          createdAt: eventProposals.createdAt,
+        })
+        .from(eventProposals)
+        .where(inArray(eventProposals.clubId, allowedClubIds))
+        .orderBy(desc(eventProposals.createdAt));
+
+      return reply.status(200).send({ items: proposals });
+    }
+  );
 
   // 5. Faculty Proposals List
   server.get(

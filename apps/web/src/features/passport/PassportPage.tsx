@@ -99,6 +99,7 @@ interface PassportApiRow {
   };
   ticket: {
     id: string;
+    registrationId?: string;
     checkedInAt: string;
   };
   certificate: {
@@ -203,7 +204,7 @@ export const PassportPage: React.FC = () => {
     const seenEventIds = new Set<string>();
 
     for (const row of registrations) {
-      if (row.registration.status === 'CANCELLED') continue;
+      if (row.registration.status === 'CANCELLED' || row.registration.status === 'WAITLISTED') continue;
       const passportMeta = passportByEventId.get(row.event.id);
       const isAttended =
         !!row.ticket?.checkedInAt ||
@@ -231,7 +232,7 @@ export const PassportPage: React.FC = () => {
       if (!seenEventIds.has(p.event.id)) {
         list.push({
           id: p.ticket.id,
-          registrationId: p.ticket.id,
+          registrationId: p.ticket.registrationId || p.ticket.id,
           eventId: p.event.id,
           eventTitle: p.event.title,
           eventDate: p.event.startAt,
@@ -461,32 +462,34 @@ export const PassportPage: React.FC = () => {
                     </div>
 
                     {/* Right High Contrast QR Code Block */}
-                    <div className="flex flex-col items-center gap-2 shrink-0">
-                      <div className="p-4 bg-white rounded-2xl shadow-lg border border-slate-200 text-center">
-                        <AuthenticatedQrImage
-                          registrationId={tkt.registrationId}
-                          onObjectUrlChange={(url) => handleQrUrlChange(tkt.id, url)}
-                        />
-                        <div className="flex items-center justify-center gap-1 text-[11px] text-slate-700 font-semibold pt-2">
-                          <Sun className="h-3.5 w-3.5 text-amber-500" />
-                          <span>Brightness-boost for gate optical scanners</span>
+                    {tkt.token ? (
+                      <div className="flex flex-col items-center gap-2 shrink-0">
+                        <div className="p-4 bg-white rounded-2xl shadow-lg border border-slate-200 text-center">
+                          <AuthenticatedQrImage
+                            registrationId={tkt.registrationId}
+                            onObjectUrlChange={(url) => handleQrUrlChange(tkt.id, url)}
+                          />
+                          <div className="flex items-center justify-center gap-1 text-[11px] text-slate-700 font-semibold pt-2">
+                            <Sun className="h-3.5 w-3.5 text-amber-500" />
+                            <span>Brightness-boost for gate optical scanners</span>
+                          </div>
                         </div>
-                      </div>
 
-                      {qrBlobUrls[tkt.id] ? (
-                        <a
-                          href={qrBlobUrls[tkt.id]!}
-                          download={`ticket-${tkt.id}.png`}
-                          className="text-xs text-primary font-semibold hover:underline"
-                        >
-                          Save Ticket to Photos / Wallet
-                        </a>
-                      ) : (
-                        <span className="text-xs text-muted-foreground font-semibold">
-                          Save Ticket to Photos / Wallet
-                        </span>
-                      )}
-                    </div>
+                        {qrBlobUrls[tkt.id] ? (
+                          <a
+                            href={qrBlobUrls[tkt.id]!}
+                            download={`ticket-${tkt.id}.png`}
+                            className="text-xs text-primary font-semibold hover:underline"
+                          >
+                            Save Ticket to Photos / Wallet
+                          </a>
+                        ) : (
+                          <span className="text-xs text-muted-foreground font-semibold">
+                            Save Ticket to Photos / Wallet
+                          </span>
+                        )}
+                      </div>
+                    ) : null}
                   </div>
                 </Card>
               ))

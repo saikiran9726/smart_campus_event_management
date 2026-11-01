@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { eq, or } from 'drizzle-orm';
 import QRCode from 'qrcode';
 import {
   generateOpaqueToken,
@@ -133,7 +133,7 @@ export async function getTicketDetailsByRegistrationId(
     .innerJoin(registrations, eq(tickets.registrationId, registrations.id))
     .innerJoin(events, eq(tickets.eventId, events.id))
     .leftJoin(venues, eq(events.venueId, venues.id))
-    .where(eq(tickets.registrationId, registrationId))
+    .where(or(eq(tickets.registrationId, registrationId), eq(tickets.id, registrationId)))
     .limit(1);
 
   if (!row) {

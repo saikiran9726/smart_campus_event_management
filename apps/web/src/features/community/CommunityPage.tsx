@@ -38,6 +38,7 @@ export const CommunityPage: React.FC = () => {
 
   const [clubs, setClubs] = useState<ClubSummary[]>([]);
   const [selectedClubId, setSelectedClubId] = useState<string | null>(null);
+  const [myClubIds, setMyClubIds] = useState<Set<string>>(new Set());
   const [channels, setChannels] = useState<ChannelSummary[]>([]);
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [unreadMap, setUnreadMap] = useState<Record<string, number>>({});
@@ -48,13 +49,19 @@ export const CommunityPage: React.FC = () => {
   useEffect(() => {
     const fetchClubs = async () => {
       try {
-        const res = await api.get<{ clubs: ClubSummary[] }>('/clubs', {
-          showToast: false,
-        });
+        const [res, myRes] = await Promise.all([
+          api.get<{ clubs: ClubSummary[] }>('/clubs', { showToast: false }),
+          api.get<{ clubs: Array<{ id: string }> }>('/clubs/me', { showToast: false }).catch(() => ({ clubs: [] })),
+        ]);
         const list = res.clubs || [];
+        const memberIds = new Set((myRes.clubs || []).map((c) => c.id));
+        setMyClubIds(memberIds);
         setClubs(list);
         if (list.length > 0 && !selectedClubId) {
-          setSelectedClubId(list[0]!.id);
+          const preferred = list.find((c) => memberIds.has(c.id)) || list[0];
+          if (preferred) {
+            setSelectedClubId(preferred.id);
+          }
         }
       } catch {
         setClubs([]);
@@ -314,7 +321,15 @@ export const CommunityPage: React.FC = () => {
             <span className="font-bold text-sm">#{activeChannel?.name || 'chat'}</span>
           </div>
 
-          {activeChannel ? (
+          {!isAdmin && user?.role !== 'FACULTY' && selectedClubId && !myClubIds.has(selectedClubId) ? (
+            <div className="h-full flex flex-col items-center justify-center p-8 text-center text-muted-foreground space-y-3">
+              <Users className="h-12 w-12 text-muted-foreground/60" />
+              <p className="font-bold text-base text-foreground">Club Membership Required</p>
+              <p className="text-xs max-w-sm">
+                You are viewing a club you have not joined yet. Request an invite or reach out to a club lead to participate in chat discussions.
+              </p>
+            </div>
+          ) : activeChannel ? (
             <ChatThread
               key={activeChannel.id}
               channelId={activeChannel.id}

@@ -174,7 +174,7 @@ export const ClubSettingsPage: React.FC = () => {
   const channels = channelsData?.channels ?? [];
 
   return (
-    <div className="container max-w-5xl py-8 px-4 sm:px-8 mx-auto space-y-6">
+    <div className="container max-w-5xl py-8 px-4 sm:px-8 mx-auto space-y-6 overflow-x-hidden">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-border/60 pb-6">
         <div className="flex items-center gap-3">
@@ -199,7 +199,7 @@ export const ClubSettingsPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-3 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
           <ClubSwitcher />
           <Button
             onClick={() => setIsAddMemberOpen(true)}
@@ -245,7 +245,7 @@ export const ClubSettingsPage: React.FC = () => {
             <div className="divide-y divide-border/60">
               {members.map((mem) => (
                 <div
-                  key={mem.id}
+                  key={mem.userId || mem.id}
                   className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
                 >
                   <div className="space-y-0.5">

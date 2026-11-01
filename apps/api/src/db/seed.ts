@@ -4,8 +4,11 @@ import {
   ChannelKind,
   ClubMemberRole,
   EventStatus,
+  generateOpaqueToken,
   ProposalStatus,
   QuestionType,
+  RegistrationStatus,
+  TicketStatus,
   UserRole,
 } from '@eventora/shared';
 import { db, pool } from './client';
@@ -19,6 +22,8 @@ import {
   events,
   expenseItems,
   formQuestions,
+  registrations,
+  tickets,
   users,
   venues,
 } from './schema';
@@ -70,6 +75,21 @@ export async function runSeed(): Promise<void> {
       year: 3,
       role: UserRole.ORGANIZER,
       phone: '+91 9876543212',
+    })
+    .onConflictDoNothing({ target: users.email })
+    .returning();
+
+  const [organizerNoClubUser] = await db
+    .insert(users)
+    .values({
+      clerkId: 'user_organizer_no_club',
+      email: 'alex.noclub@eventora.campus.edu',
+      fullName: 'Alex Solo Organizer',
+      rollNumber: 'CS23B199',
+      department: 'Information Technology',
+      year: 3,
+      role: UserRole.ORGANIZER,
+      phone: '+91 9876543299',
     })
     .onConflictDoNothing({ target: users.email })
     .returning();
@@ -431,6 +451,41 @@ export async function runSeed(): Promise<void> {
               },
             ])
             .onConflictDoNothing();
+        }
+
+        // Seed Confirmed Registration and Ticket for studentUser
+        if (studentId) {
+          const [studentReg] = await db
+            .insert(registrations)
+            .values({
+              eventId: hackathonEventRecord.id,
+              userId: studentId,
+              status: RegistrationStatus.CONFIRMED,
+            })
+            .onConflictDoNothing()
+            .returning();
+
+          const regRecord =
+            studentReg ??
+            (
+              await db
+                .select()
+                .from(registrations)
+                .where(eq(registrations.eventId, hackathonEventRecord.id))
+            ).find((r) => r.userId === studentId);
+
+          if (regRecord) {
+            await db
+              .insert(tickets)
+              .values({
+                registrationId: regRecord.id,
+                eventId: hackathonEventRecord.id,
+                userId: studentId,
+                token: generateOpaqueToken(),
+                status: TicketStatus.VALID,
+              })
+              .onConflictDoNothing();
+          }
         }
       }
     }

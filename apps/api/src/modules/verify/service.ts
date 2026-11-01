@@ -278,6 +278,7 @@ export async function getUserPassport(userId: string) {
       },
       ticket: {
         id: row.ticketId,
+        registrationId: row.registrationId,
         checkedInAt: row.checkedInAt!.toISOString(),
       },
       certificate: cert

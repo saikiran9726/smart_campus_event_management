@@ -219,7 +219,7 @@ export const BudgetPage: React.FC = () => {
   const expenses = budgetData?.expenses ?? [];
 
   return (
-    <div className="container max-w-6xl py-8 px-4 sm:px-8 mx-auto space-y-6">
+    <div className="container max-w-6xl py-8 px-4 sm:px-8 mx-auto space-y-6 overflow-x-hidden">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-border/60 pb-6">
         <div className="flex items-center gap-3">
@@ -242,7 +242,7 @@ export const BudgetPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <ClubSwitcher />
           <Button
             variant="outline"

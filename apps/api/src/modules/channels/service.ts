@@ -51,7 +51,7 @@ export async function checkChannelReadAccess(
     .limit(1);
 
   if (!user) return false;
-  if (user.role === UserRole.ADMIN) return true;
+  if (user.role === UserRole.ADMIN || user.role === UserRole.FACULTY) return true;
 
   const [channel] = await db
     .select({
@@ -68,6 +68,15 @@ export async function checkChannelReadAccess(
 
   // Club channel access
   if (channel.clubId) {
+    // Check if faculty coordinator of this club
+    const [club] = await db
+      .select({ facultyCoordinatorId: clubs.facultyCoordinatorId })
+      .from(clubs)
+      .where(eq(clubs.id, channel.clubId))
+      .limit(1);
+
+    if (club?.facultyCoordinatorId === userId) return true;
+
     const [membership] = await db
       .select({ role: clubMembers.role })
       .from(clubMembers)
