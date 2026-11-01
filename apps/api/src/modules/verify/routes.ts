@@ -29,6 +29,23 @@ export async function verifyRoutes(app: FastifyInstance): Promise<void> {
     }
   );
 
+  // 1.5. Public certificate verification alias
+  app.get(
+    '/public/verify/certificate/:id',
+    {
+      schema: {
+        params: z.object({
+          id: z.string().uuid(),
+        }),
+      },
+    },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const details = await getCertificateDetails(id);
+      return reply.code(200).send(details);
+    }
+  );
+
   // 2. Server-rendered OG HTML page for crawlers
   app.get(
     '/og/cert/:id',

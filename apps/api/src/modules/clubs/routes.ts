@@ -6,7 +6,7 @@ import {
   UserRole,
 } from '@eventora/shared';
 import { db } from '../../db/client';
-import { clubChannels, clubMembers, clubs, users } from '../../db/schema';
+import { clubChannels, clubMembers, clubs, events, users } from '../../db/schema';
 import { AppError } from '../../lib/app-error';
 import { requireClubRole, requireRole } from '../../middleware/rbac';
 import { requireAuth } from '../../plugins/auth';
@@ -289,6 +289,39 @@ export async function clubRoutes(server: FastifyInstance): Promise<void> {
     }
   );
 
+  // 5.5. Update Member Role
+  server.patch(
+    '/clubs/:id/members/:userId',
+    {
+      preHandler: [
+        requireAuth,
+        requireClubRole('id', ClubMemberRole.OWNER, ClubMemberRole.ADMIN),
+      ],
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { id, userId } = request.params as { id: string; userId: string };
+      const body = request.body as { role: ClubMemberRole };
+
+      if (!body.role) {
+        throw new AppError('VALIDATION_FAILED', 'role is required.', 400);
+      }
+
+      const [updated] = await db
+        .update(clubMembers)
+        .set({ role: body.role })
+        .where(
+          and(eq(clubMembers.clubId, id), eq(clubMembers.userId, userId))
+        )
+        .returning();
+
+      if (!updated) {
+        throw new AppError('NOT_FOUND', 'Club member not found.', 404);
+      }
+
+      return reply.status(200).send({ member: updated });
+    }
+  );
+
   // 6. Remove Member
   server.delete(
     '/clubs/:id/members/:userId',
@@ -367,6 +400,50 @@ export async function clubRoutes(server: FastifyInstance): Promise<void> {
         .orderBy(desc(clubMembers.joinedAt));
 
       return reply.status(200).send({ members });
+    }
+  );
+
+  // 9. List Events for a Club (Organizer / Members)
+  server.get(
+    '/clubs/:id/events',
+    { preHandler: [requireAuth] },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { id } = request.params as { id: string };
+
+      const [club] = await db
+        .select({ id: clubs.id })
+        .from(clubs)
+        .where(eq(clubs.id, id))
+        .limit(1);
+
+      if (!club) {
+        throw new AppError('NOT_FOUND', `Club '${id}' not found.`, 404);
+      }
+
+      const clubEvents = await db
+        .select({
+          id: events.id,
+          clubId: events.clubId,
+          title: events.title,
+          slug: events.slug,
+          status: events.status,
+          startAt: events.startAt,
+          endAt: events.endAt,
+          capacity: events.capacity,
+          remainingCapacity: events.remainingCapacity,
+          pricePaise: events.pricePaise,
+          isPaid: events.isPaid,
+          isCompetition: events.isCompetition,
+          posterKey: events.posterKey,
+        })
+        .from(events)
+        .where(eq(events.clubId, id))
+        .orderBy(desc(events.startAt));
+
+      return reply.status(200).send({
+        items: clubEvents || [],
+        events: clubEvents || [],
+      });
     }
   );
 }

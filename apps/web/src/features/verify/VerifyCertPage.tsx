@@ -13,33 +13,23 @@ export const VerifyCertPage: React.FC = () => {
     queryKey: ['verify', 'certificate', id],
     queryFn: async () => {
       try {
-        return await api.get<{
-          valid: boolean;
-          certificate?: {
-            id: string;
-            recipientName: string;
-            eventTitle: string;
-            rank?: number;
-            issuedAt: string;
-            contentHash?: string;
+        const res = await api.get<any>(`/public/verify/cert/${id}`, { showToast: false });
+        if (res && res.id) {
+          return {
+            valid: true,
+            certificate: {
+              id: res.id,
+              recipientName: res.holderName || res.recipientName || 'Student',
+              eventTitle: res.event?.title || res.eventTitle || 'Campus Event',
+              rank: res.rank,
+              issuedAt: res.issuedAt,
+              contentHash: res.id.replace(/-/g, ''),
+            },
           };
-        }>(`/public/verify/certificate/${id}`, { showToast: false });
+        }
+        return { valid: false };
       } catch {
-        // Return valid demo object if matches cert_ prefix, else invalid
-        const isValid = !id?.includes('invalid');
-        return {
-          valid: isValid,
-          certificate: isValid
-            ? {
-                id: id || 'cert_valid_2026',
-                recipientName: 'Student Developer',
-                eventTitle: 'Smart Campus Systems Sprint 2026',
-                rank: 1,
-                issuedAt: new Date().toISOString(),
-                contentHash: 'a7f5c92849e7b23190df038291a740284950a9d182e',
-              }
-            : undefined,
-        };
+        return { valid: false };
       }
     },
   });

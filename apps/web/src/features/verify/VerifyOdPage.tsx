@@ -13,34 +13,24 @@ export const VerifyOdPage: React.FC = () => {
     queryKey: ['verify', 'od', serial],
     queryFn: async () => {
       try {
-        return await api.get<{
-          valid: boolean;
-          odLetter?: {
-            serial: string;
-            studentName: string;
-            rollNumber: string;
-            department: string;
-            eventTitle: string;
-            checkedInAt: string;
-            facultyName: string;
+        const res = await api.get<any>(`/public/verify/od/${serial}`, { showToast: false });
+        if (res && res.valid) {
+          return {
+            valid: true,
+            odLetter: {
+              serial: res.serial,
+              studentName: res.studentName || 'Student',
+              rollNumber: res.maskedRollNumber || res.rollNumber || 'N/A',
+              department: res.department || 'Academic Department',
+              eventTitle: res.event?.title || res.eventTitle || 'Campus Event',
+              checkedInAt: res.checkedInAt || res.issuedAt || new Date().toISOString(),
+              facultyName: res.facultyName || 'Faculty Authority',
+            },
           };
-        }>(`/public/verify/od/${serial}`, { showToast: false });
+        }
+        return { valid: false };
       } catch {
-        const isValid = !serial?.includes('invalid');
-        return {
-          valid: isValid,
-          odLetter: isValid
-            ? {
-                serial: serial || 'OD-2026-A1B2C3D4',
-                studentName: 'Student Attendee',
-                rollNumber: '22CS1049',
-                department: 'Computer Science & Engineering',
-                eventTitle: 'Autonomous AI Hackathon 2026',
-                checkedInAt: new Date(Date.now() - 3600000 * 2).toISOString(),
-                facultyName: 'Dr. Ramesh Kumar, Faculty Coordinator',
-              }
-            : undefined,
-        };
+        return { valid: false };
       }
     },
   });

@@ -80,34 +80,7 @@ export const TeamsPanel: React.FC = () => {
         const res = await api.get<{ teams: TeamItem[] }>(`/events/${eventId}/teams`);
         return res;
       } catch {
-        return {
-          teams: [
-            {
-              id: 'team-01',
-              name: 'Neural Navigators',
-              code: 'NN2026',
-              status: 'LOCKED',
-              lockedAt: new Date().toISOString(),
-              members: [
-                { id: 'm1', userId: 'u1', role: 'LEADER', fullName: 'Alice Chen', email: 'alice@campus.edu', rollNumber: '22CS101' },
-                { id: 'm2', userId: 'u2', role: 'MEMBER', fullName: 'Bob Roy', email: 'bob@campus.edu', rollNumber: '22CS102' },
-              ],
-              snapshot: [
-                { userId: 'u1', fullName: 'Alice Chen', rollNumber: '22CS101', role: 'LEADER' },
-                { userId: 'u2', fullName: 'Bob Roy', rollNumber: '22CS102', role: 'MEMBER' },
-              ],
-            },
-            {
-              id: 'team-02',
-              name: 'Quantum Pioneers',
-              code: 'QP8821',
-              status: 'FORMING',
-              members: [
-                { id: 'm3', userId: 'u3', role: 'LEADER', fullName: 'Charlie Davis', email: 'charlie@campus.edu', rollNumber: '22EC201' },
-              ],
-            },
-          ],
-        };
+        return { teams: [] };
       }
     },
     enabled: !!eventId,
@@ -121,19 +94,7 @@ export const TeamsPanel: React.FC = () => {
         const res = await api.get<{ submissions: SubmissionItem[] }>(`/events/${eventId}/submissions`);
         return res;
       } catch {
-        return {
-          submissions: [
-            {
-              teamId: 'team-01',
-              teamName: 'Neural Navigators',
-              projectTitle: 'Antigravity Autonomous Agent Mesh',
-              abstract: 'High-throughput edge orchestration engine leveraging multi-modal models.',
-              repoUrl: 'https://github.com/campus/neural-navigators',
-              demoUrl: 'https://demo.campus.edu/mesh',
-              submittedAt: new Date().toISOString(),
-            },
-          ],
-        };
+        return { submissions: [] };
       }
     },
     enabled: !!eventId,

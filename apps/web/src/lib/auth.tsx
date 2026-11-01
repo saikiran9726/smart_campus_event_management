@@ -58,10 +58,30 @@ export const ClerkAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const { isLoaded: isClerkLoaded, isSignedIn, user: clerkUser } = useClerkUser();
   const { getToken, signOut: clerkSignOut } = useClerkAuth();
 
-  const testUserId =
-    typeof window !== 'undefined'
-      ? sessionStorage.getItem('eventora_test_user_id') || localStorage.getItem('eventora_test_user_id')
-      : null;
+  const [testUserId, setTestUserId] = React.useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('eventora_test_user_id') || localStorage.getItem('eventora_test_user_id');
+    }
+    return null;
+  });
+
+  useEffect(() => {
+    const checkStorage = () => {
+      const current =
+        sessionStorage.getItem('eventora_test_user_id') || localStorage.getItem('eventora_test_user_id');
+      if (current !== testUserId) {
+        setTestUserId(current);
+      }
+    };
+    checkStorage();
+    window.addEventListener('storage', checkStorage);
+    const interval = setInterval(checkStorage, 300);
+    return () => {
+      window.removeEventListener('storage', checkStorage);
+      clearInterval(interval);
+    };
+  }, [testUserId]);
+
   const effectiveIsSignedIn = Boolean(isSignedIn || testUserId);
 
   useEffect(() => {
@@ -225,7 +245,27 @@ export const MockAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = (props) => {
-  return isClerkKeyValid ? <ClerkAuthProvider {...props} /> : <MockAuthProvider {...props} />;
+  const [hasTestUser, setHasTestUser] = React.useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return Boolean(sessionStorage.getItem('eventora_test_user_id') || localStorage.getItem('eventora_test_user_id'));
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    const check = () => {
+      const has = Boolean(sessionStorage.getItem('eventora_test_user_id') || localStorage.getItem('eventora_test_user_id'));
+      if (has !== hasTestUser) setHasTestUser(has);
+    };
+    window.addEventListener('storage', check);
+    const interval = setInterval(check, 300);
+    return () => {
+      window.removeEventListener('storage', check);
+      clearInterval(interval);
+    };
+  }, [hasTestUser]);
+
+  return isClerkKeyValid && !hasTestUser ? <ClerkAuthProvider {...props} /> : <MockAuthProvider {...props} />;
 };
 
 export function useAuth(): AuthContextValue {

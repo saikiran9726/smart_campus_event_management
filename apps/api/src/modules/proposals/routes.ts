@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import {
   ClubMemberRole,
@@ -794,6 +794,51 @@ export async function proposalRoutes(server: FastifyInstance): Promise<void> {
       });
 
       return reply.status(response.statusCode).send(JSON.parse(response.body));
+    }
+  );
+
+  // 6. List All Campus Venues (Prompt 25 Spec Alignment)
+  server.get(
+    '/venues',
+    { preHandler: [requireAuth] },
+    async (_request: FastifyRequest, reply: FastifyReply) => {
+      const allVenues = await db
+        .select({
+          id: venues.id,
+          name: venues.name,
+          capacity: venues.capacity,
+          locationText: venues.locationText,
+          mapUrl: venues.mapUrl,
+        })
+        .from(venues)
+        .orderBy(asc(venues.name));
+
+      return reply.status(200).send({
+        venues: allVenues || [],
+        items: allVenues || [],
+      });
+    }
+  );
+
+  // 7. List All AV Resources (Prompt 25 Spec Alignment)
+  server.get(
+    '/av-resources',
+    { preHandler: [requireAuth] },
+    async (_request: FastifyRequest, reply: FastifyReply) => {
+      const allResources = await db
+        .select({
+          id: avResources.id,
+          name: avResources.name,
+          kind: avResources.kind,
+          quantity: avResources.quantity,
+        })
+        .from(avResources)
+        .orderBy(asc(avResources.name));
+
+      return reply.status(200).send({
+        resources: allResources || [],
+        items: allResources || [],
+      });
     }
   );
 }

@@ -67,6 +67,22 @@ export async function teamRoutes(server: FastifyInstance): Promise<void> {
     }
   );
 
+  // 2.5. Join a team using code (event-scoped alias)
+  server.post(
+    '/events/:eventId/teams/join',
+    { preHandler: [requireAuth] },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const parsed = joinTeamBodySchema.safeParse(request.body);
+      if (!parsed.success) {
+        throw new AppError('VALIDATION_FAILED', 'Team code is required.', 400);
+      }
+
+      const code = (parsed.data.code || parsed.data.inviteCode)!;
+      const result = await joinTeamByCode(request.user!.id, code);
+      return reply.status(200).send(result);
+    }
+  );
+
   // 3. Leave a team
   server.post(
     '/teams/:id/leave',

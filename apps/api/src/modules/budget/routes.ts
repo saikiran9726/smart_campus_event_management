@@ -1,5 +1,11 @@
-import { FastifyInstance } from 'fastify';
+import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import { desc, isNull } from 'drizzle-orm';
+import { UserRole } from '@eventora/shared';
+import { db } from '../../db/client';
+import { expenseItems } from '../../db/schema';
+import { AppError } from '../../lib/app-error';
+import { requireFaculty } from '../../middleware/rbac';
 import { requireAuth } from '../../plugins/auth';
 import {
   addExpense,
@@ -139,6 +145,31 @@ export async function budgetRoutes(app: FastifyInstance): Promise<void> {
       reply.header('Content-Type', 'text/csv; charset=utf-8');
       reply.header('Content-Disposition', `attachment; filename="club-${clubId}-budget.csv"`);
       return reply.send(csv);
+    }
+  );
+
+  // 6. Get pending expenses for faculty sign-off
+  app.get(
+    '/faculty/pending-expenses',
+    { preHandler: [requireAuth, requireFaculty] },
+    async (_request: FastifyRequest, reply: FastifyReply) => {
+      const pendingExpenses = await db
+        .select({
+          id: expenseItems.id,
+          category: expenseItems.category,
+          description: expenseItems.description,
+          amountPaise: expenseItems.amountPaise,
+          receiptKey: expenseItems.receiptKey,
+          facultySignedAt: expenseItems.signedOffAt,
+          createdAt: expenseItems.createdAt,
+        })
+        .from(expenseItems)
+        .where(isNull(expenseItems.signedOffBy))
+        .orderBy(desc(expenseItems.createdAt));
+
+      return reply.code(200).send({
+        items: pendingExpenses || [],
+      });
     }
   );
 }

@@ -94,6 +94,16 @@ export const AppRoutes: React.FC = () => {
               </RequireAuth>
             }
           />
+          <Route
+            path="/faculty/dashboard"
+            element={
+              <RequireAuth>
+                <RequireRole roles={['FACULTY', 'ADMIN']}>
+                  <FacultyDashboardPage />
+                </RequireRole>
+              </RequireAuth>
+            }
+          />
 
           {/* Organizer Studio Routes */}
           <Route
@@ -158,6 +168,16 @@ export const AppRoutes: React.FC = () => {
           />
           <Route
             path="/organizer/budget"
+            element={
+              <RequireAuth>
+                <RequireRole roles={['ORGANIZER', 'FACULTY', 'ADMIN']}>
+                  <BudgetPage />
+                </RequireRole>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/organizer/clubs/:clubId/budget"
             element={
               <RequireAuth>
                 <RequireRole roles={['ORGANIZER', 'FACULTY', 'ADMIN']}>

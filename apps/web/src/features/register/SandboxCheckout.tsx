@@ -32,22 +32,21 @@ export const SandboxCheckout: React.FC<SandboxCheckoutProps> = ({
     setIsProcessing(true);
     try {
       if (outcome === 'SUCCESS') {
-        const res = await api.post<{ success: boolean; transactionId: string }>(
-          `/events/${eventId}/payments/sandbox`,
+        const res = await api.post<{ outcome: string; payment?: { id: string }; transactionId?: string }>(
+          `/registrations/${registrationId}/sandbox-checkout`,
           {
-            registrationId,
-            outcome: 'SUCCESS',
+            simulate: 'SUCCESS',
           }
         );
+        const txId = res.transactionId || res.payment?.id || 'SANDBOX_TX_001';
         toast({
           title: 'Payment Simulated Successfully',
-          description: `Transaction reference ${res.transactionId || 'SANDBOX_TX_001'} confirmed.`,
+          description: `Transaction reference ${txId} confirmed.`,
         });
-        onSuccess(res);
+        onSuccess({ success: true, transactionId: txId });
       } else {
-        await api.post(`/events/${eventId}/payments/sandbox`, {
-          registrationId,
-          outcome: 'FAILED',
+        await api.post(`/registrations/${registrationId}/sandbox-checkout`, {
+          simulate: 'FAILURE',
         });
         toast({
           variant: 'destructive',
@@ -56,13 +55,14 @@ export const SandboxCheckout: React.FC<SandboxCheckoutProps> = ({
         });
         onFailure('Simulated payment failure triggered.');
       }
-    } catch {
-      // In dev fallback or offline mode
-      if (outcome === 'SUCCESS') {
-        onSuccess({ transactionId: `TX_${Date.now()}` });
-      } else {
-        onFailure('Sandbox simulation decline.');
-      }
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'Payment simulation failed.';
+      toast({
+        variant: 'destructive',
+        title: 'Payment Simulation Error',
+        description: errMsg,
+      });
+      onFailure(errMsg);
     } finally {
       setIsProcessing(false);
     }

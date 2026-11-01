@@ -5,6 +5,7 @@
   "scripts": {
     "build:shared": "pnpm --filter @eventora/shared build",
     "build": "pnpm build:shared && pnpm -r run build",
+    "route-audit": "node scripts/route-audit.mjs",
     "test": "pnpm build:shared && pnpm -r run test",
     "lint": "pnpm build:shared && pnpm -r run lint",
     "typecheck": "pnpm build:shared && pnpm -r run typecheck",

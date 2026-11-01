@@ -133,9 +133,9 @@ export const GateOps: React.FC = () => {
       }
     };
 
-    socket.on('gate:scan', handleGateScan);
+    socket.on('scan:result', handleGateScan);
     return () => {
-      socket.off('gate:scan', handleGateScan);
+      socket.off('scan:result', handleGateScan);
     };
   }, [eventId]);
 

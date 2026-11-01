@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { CountdownTimer } from '@/components/primitives/countdown-timer';
 import { toast } from '@/components/ui/use-toast';
 import { api } from '@/lib/api';
+import { useSocketEvent } from '@/lib/socket';
 import {
   Users,
   Copy,
@@ -73,6 +74,13 @@ export const TeamPanel: React.FC<TeamPanelProps> = ({
   const [repoUrl, setRepoUrl] = useState(team?.submission?.repoUrl || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Realtime updates for team rosters and submission states
+  useSocketEvent<any>('team:update', (data) => {
+    if (data?.team) {
+      setTeam(data.team);
+    }
+  });
+
   const copyInviteCode = () => {
     if (!team?.inviteCode) return;
     navigator.clipboard.writeText(team.inviteCode);
@@ -112,7 +120,7 @@ export const TeamPanel: React.FC<TeamPanelProps> = ({
     if (!joinCode.trim()) return;
 
     try {
-      const res = await api.post<{ team: TeamData }>(`/events/${eventId}/teams/join`, {
+      const res = await api.post<{ team: TeamData }>(`/teams/join`, {
         code: joinCode.trim().toUpperCase(),
       });
       setTeam(res.team);
@@ -131,12 +139,20 @@ export const TeamPanel: React.FC<TeamPanelProps> = ({
 
   const handleSubmitProject = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!team?.id) {
+      toast({
+        title: 'No team selected',
+        description: 'You must create or join a team before submitting project deliverables.',
+        variant: 'destructive',
+      });
+      return;
+    }
     setIsSubmitting(true);
     try {
-      await api.post(`/events/${eventId}/submissions`, {
+      await api.post(`/teams/${team.id}/submission`, {
         projectTitle,
         abstract,
-        demoUrl,
+        demoUrl: demoUrl || undefined,
         repoUrl,
       });
       toast({

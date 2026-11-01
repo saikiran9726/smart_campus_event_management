@@ -110,6 +110,9 @@ jobs:
       - name: Workspace Build
         run: pnpm -r build
 
+      - name: Route & Realtime Parity Audit
+        run: node scripts/route-audit.mjs
+
       - name: Unit & Integration Tests
         run: pnpm -r test
 
