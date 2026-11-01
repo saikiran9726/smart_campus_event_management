@@ -122,7 +122,7 @@ test.describe('Prompt 25: Comprehensive End-to-End Role Journeys (No Mocks, Real
     await page.evaluate(() => localStorage.setItem('eventora_test_user_id', 'user_faculty_001'));
     await page.goto('/faculty/dashboard');
 
-    await expect(page.locator('text=Faculty Dashboard')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Faculty Dashboard' })).toBeVisible();
     await expect(page.locator('text=Proposals').first()).toBeVisible();
 
     // 2. Admin dashboard & campus analytics

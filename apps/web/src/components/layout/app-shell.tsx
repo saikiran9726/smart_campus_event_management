@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
 import { useTheme } from '@/components/theme-provider';
@@ -9,12 +9,14 @@ import {
   Ticket,
   MessageSquare,
   LayoutDashboard,
+  GraduationCap,
   User,
   Sun,
   Moon,
   Shield,
   LogOut,
   CalendarDays,
+  Menu,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -24,14 +26,22 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 
 export const AppShell: React.FC = () => {
-  const { isSignedIn, user, clerkUser, isClubOrganizer, isAdmin, signOut } = useAuth();
-  const { theme, setTheme, resolvedTheme } = useTheme();
+  const { isSignedIn, user, clerkUser, isClubOrganizer, isFaculty, isAdmin, signOut } = useAuth();
+  const { setTheme, resolvedTheme } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
+  const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
 
   const isScannerRoute = location.pathname.startsWith('/scanner');
 
@@ -48,25 +58,32 @@ export const AppShell: React.FC = () => {
     setTheme(resolvedTheme === 'dark' ? 'light' : 'dark');
   };
 
+  const isRouteActive = (itemPath: string) => {
+    if (itemPath === '/') {
+      return location.pathname === '/' || location.pathname.startsWith('/discover');
+    }
+    return location.pathname.startsWith(itemPath);
+  };
+
+  // Role-based navigation items (hidden, not disabled)
   const navItems = [
-    { label: 'Discover', path: '/', icon: Compass },
-    { label: 'Passport', path: '/passport', icon: Ticket, requiresAuth: true },
-    { label: 'Community', path: '/community', icon: MessageSquare },
-    ...(isClubOrganizer || isAdmin
-      ? [{ label: 'Organizer', path: '/organizer', icon: LayoutDashboard }]
-      : []),
-    ...(isAdmin ? [{ label: 'Admin', path: '/admin', icon: Shield }] : []),
-  ];
+    { label: 'Discover', path: '/', icon: Compass, show: true },
+    { label: 'Passport', path: '/passport', icon: Ticket, show: true },
+    { label: 'Community', path: '/community', icon: MessageSquare, show: true },
+    { label: 'Organizer Studio', path: '/organizer', icon: LayoutDashboard, show: isClubOrganizer },
+    { label: 'Faculty Dashboard', path: '/faculty/dashboard', icon: GraduationCap, show: isFaculty },
+    { label: 'Admin Console', path: '/admin', icon: Shield, show: isAdmin },
+  ].filter((item) => item.show);
 
   const mobileNavItems = [
-    { label: 'Discover', path: '/', icon: Compass },
-    { label: 'Passport', path: '/passport', icon: Ticket },
-    { label: 'Community', path: '/community', icon: MessageSquare },
-    ...(isClubOrganizer || isAdmin
-      ? [{ label: 'Organizer', path: '/organizer', icon: LayoutDashboard }]
-      : []),
-    { label: 'Profile', path: '/profile', icon: User },
-  ];
+    { label: 'Discover', path: '/', icon: Compass, show: true },
+    { label: 'Passport', path: '/passport', icon: Ticket, show: true },
+    { label: 'Community', path: '/community', icon: MessageSquare, show: true },
+    { label: 'Organizer', path: '/organizer', icon: LayoutDashboard, show: isClubOrganizer },
+    { label: 'Faculty', path: '/faculty/dashboard', icon: GraduationCap, show: isFaculty },
+    { label: 'Admin', path: '/admin', icon: Shield, show: isAdmin },
+    { label: 'Profile', path: '/profile', icon: User, show: true },
+  ].filter((item) => item.show);
 
   if (isScannerRoute) {
     return (
@@ -92,7 +109,7 @@ export const AppShell: React.FC = () => {
       {/* 2. Desktop & Tablet Top Navigation */}
       <header className="sticky top-0 z-40 w-full border-b border-border/80 bg-background/95 backdrop-blur-md supports-[backdrop-filter]:bg-background/80">
         <div className="container flex h-16 items-center justify-between px-4 sm:px-8">
-          {/* Brand Logo */}
+          {/* Brand Logo & Desktop Nav Links */}
           <div className="flex items-center gap-6">
             <Link
               to="/"
@@ -114,10 +131,7 @@ export const AppShell: React.FC = () => {
             <nav className="hidden md:flex items-center gap-1" aria-label="Main Navigation">
               {navItems.map((item) => {
                 const Icon = item.icon;
-                const isActive =
-                  item.path === '/'
-                    ? location.pathname === '/'
-                    : location.pathname.startsWith(item.path);
+                const isActive = isRouteActive(item.path);
 
                 return (
                   <NavLink
@@ -138,8 +152,8 @@ export const AppShell: React.FC = () => {
             </nav>
           </div>
 
-          {/* Right Header Utilities: Theme & Profile */}
-          <div className="flex items-center gap-3">
+          {/* Right Header Utilities: Theme & Profile & Mobile Sheet Trigger */}
+          <div className="flex items-center gap-2 sm:gap-3">
             {/* Theme Toggle Button */}
             <Button
               variant="ghost"
@@ -154,6 +168,86 @@ export const AppShell: React.FC = () => {
                 <Moon className="h-4 w-4 text-slate-700" />
               )}
             </Button>
+
+            {/* Mobile Navigation Sheet Trigger */}
+            <Sheet open={mobileSheetOpen} onOpenChange={setMobileSheetOpen}>
+              <SheetTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Open Navigation Menu"
+                  className="md:hidden h-10 w-10 rounded-full focus-ring"
+                >
+                  <Menu className="h-5 w-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-72 p-6 flex flex-col justify-between">
+                <div className="space-y-6">
+                  <SheetHeader className="text-left">
+                    <SheetTitle className="flex items-center gap-2 text-lg font-bold">
+                      <div className="h-8 w-8 rounded-lg bg-indigo-700 flex items-center justify-center text-white">
+                        <CalendarDays className="h-4 w-4" />
+                      </div>
+                      <span>Eventora OS</span>
+                    </SheetTitle>
+                  </SheetHeader>
+
+                  <nav className="flex flex-col space-y-1" aria-label="Mobile Drawer Navigation">
+                    {navItems.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = isRouteActive(item.path);
+
+                      return (
+                        <Link
+                          key={item.path}
+                          to={item.path}
+                          onClick={() => setMobileSheetOpen(false)}
+                          className={cn(
+                            'flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-md transition-colors',
+                            isActive
+                              ? 'bg-primary/10 text-primary font-semibold'
+                              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                          )}
+                        >
+                          <Icon className="h-4 w-4" />
+                          <span>{item.label}</span>
+                        </Link>
+                      );
+                    })}
+
+                    <Link
+                      to="/profile"
+                      onClick={() => setMobileSheetOpen(false)}
+                      className={cn(
+                        'flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-md transition-colors',
+                        isRouteActive('/profile')
+                          ? 'bg-primary/10 text-primary font-semibold'
+                          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                      )}
+                    >
+                      <User className="h-4 w-4" />
+                      <span>Profile</span>
+                    </Link>
+                  </nav>
+                </div>
+
+                {isSignedIn && (
+                  <div className="pt-4 border-t border-border">
+                    <Button
+                      variant="outline"
+                      className="w-full flex items-center justify-center gap-2 text-destructive hover:text-destructive"
+                      onClick={() => {
+                        setMobileSheetOpen(false);
+                        signOut();
+                      }}
+                    >
+                      <LogOut className="h-4 w-4" />
+                      <span>Sign Out</span>
+                    </Button>
+                  </div>
+                )}
+              </SheetContent>
+            </Sheet>
 
             {/* User Profile or Sign In */}
             {isSignedIn ? (
@@ -209,11 +303,19 @@ export const AppShell: React.FC = () => {
                       </Link>
                     </DropdownMenuItem>
                   )}
+                  {isFaculty && (
+                    <DropdownMenuItem asChild>
+                      <Link to="/faculty/dashboard" className="flex items-center gap-2 cursor-pointer">
+                        <GraduationCap className="h-4 w-4" />
+                        <span>Faculty Dashboard</span>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                   {isAdmin && (
                     <DropdownMenuItem asChild>
                       <Link to="/admin" className="flex items-center gap-2 cursor-pointer">
                         <Shield className="h-4 w-4" />
-                        <span>Campus Admin</span>
+                        <span>Admin Console</span>
                       </Link>
                     </DropdownMenuItem>
                   )}
@@ -246,13 +348,10 @@ export const AppShell: React.FC = () => {
         aria-label="Mobile Navigation"
         className="fixed bottom-0 inset-x-0 z-40 md:hidden border-t border-border bg-background/95 backdrop-blur-md pb-[env(safe-area-inset-bottom,0px)]"
       >
-        <div className="flex h-16 items-center justify-around px-2">
+        <div className="flex h-16 items-center justify-around px-1">
           {mobileNavItems.map((item) => {
             const Icon = item.icon;
-            const isActive =
-              item.path === '/'
-                ? location.pathname === '/'
-                : location.pathname.startsWith(item.path);
+            const isActive = isRouteActive(item.path);
 
             return (
               <NavLink
@@ -266,7 +365,9 @@ export const AppShell: React.FC = () => {
                 )}
               >
                 <Icon className={cn('h-5 w-5 mb-0.5', isActive ? 'stroke-[2.5]' : 'stroke-2')} />
-                <span className="text-[11px] leading-tight">{item.label}</span>
+                <span className="text-[10px] sm:text-[11px] leading-tight text-center truncate max-w-[64px]">
+                  {item.label}
+                </span>
               </NavLink>
             );
           })}

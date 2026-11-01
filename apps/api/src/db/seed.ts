@@ -221,6 +221,14 @@ export async function runSeed(): Promise<void> {
     for (const clubRecord of [codingClubRecord, roboticsClubRecord]) {
       if (!clubRecord) continue;
 
+      // Ensure club has faculty coordinator assigned
+      if (!clubRecord.facultyCoordinatorId && facultyId) {
+        await db
+          .update(clubs)
+          .set({ facultyCoordinatorId: facultyId })
+          .where(eq(clubs.id, clubRecord.id));
+      }
+
       await db
         .insert(clubMembers)
         .values([

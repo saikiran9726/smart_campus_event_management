@@ -111,11 +111,29 @@ export const ClerkAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   });
 
   const user = dbUserData || null;
+
+  const { data: myClubsData } = useQuery({
+    queryKey: ['my-clubs-membership', user?.id, testUserId],
+    queryFn: async () => {
+      try {
+        const res = await api.get<{ clubs: Array<{ id: string; role: string }> }>('/clubs/me', { showToast: false });
+        return res.clubs ?? [];
+      } catch {
+        return [];
+      }
+    },
+    enabled: effectiveIsSignedIn && Boolean(user),
+    staleTime: 1000 * 60 * 5,
+  });
+
   const isLoaded = (isClerkLoaded || Boolean(testUserId)) && (!effectiveIsSignedIn || !isDbUserLoading);
 
   const isAdmin = user?.role === 'ADMIN';
   const isFaculty = user?.role === 'FACULTY' || isAdmin;
-  const isClubOrganizer = user?.role === 'ORGANIZER' || isFaculty || isAdmin;
+  const isClubOwnerOrAdmin = (myClubsData ?? []).some(
+    (c) => c.role === 'OWNER' || c.role === 'ADMIN'
+  );
+  const isClubOrganizer = user?.role === 'ORGANIZER' || isAdmin || isClubOwnerOrAdmin;
 
   const signOut = async () => {
     if (typeof window !== 'undefined') {
@@ -202,11 +220,29 @@ export const MockAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
 
   const user = dbUserData || null;
+
+  const { data: myClubsData } = useQuery({
+    queryKey: ['my-clubs-membership', user?.id, testUserId],
+    queryFn: async () => {
+      try {
+        const res = await api.get<{ clubs: Array<{ id: string; role: string }> }>('/clubs/me', { showToast: false });
+        return res.clubs ?? [];
+      } catch {
+        return [];
+      }
+    },
+    enabled: effectiveIsSignedIn && Boolean(user),
+    staleTime: 1000 * 60 * 5,
+  });
+
   const isLoaded = !effectiveIsSignedIn || !isDbUserLoading;
 
   const isAdmin = user?.role === 'ADMIN';
   const isFaculty = user?.role === 'FACULTY' || isAdmin;
-  const isClubOrganizer = user?.role === 'ORGANIZER' || isFaculty || isAdmin;
+  const isClubOwnerOrAdmin = (myClubsData ?? []).some(
+    (c) => c.role === 'OWNER' || c.role === 'ADMIN'
+  );
+  const isClubOrganizer = user?.role === 'ORGANIZER' || isAdmin || isClubOwnerOrAdmin;
 
   const signOut = async () => {
     if (typeof window !== 'undefined') {

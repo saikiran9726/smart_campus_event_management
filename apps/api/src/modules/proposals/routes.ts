@@ -482,7 +482,13 @@ export async function proposalRoutes(server: FastifyInstance): Promise<void> {
 
       // Verify token cryptographic signature, expiry, and JTI status
       const tokenData = await verifyApprovalToken(body.token);
-      const actionToTake = body.action || tokenData.action;
+      const rawAction = body.action || tokenData.action;
+      const actionToTake =
+        rawAction === 'APPROVED' || rawAction === ProposalStatus.APPROVED
+          ? 'APPROVE'
+          : rawAction === 'REJECTED' || rawAction === ProposalStatus.REJECTED
+          ? 'REJECT'
+          : rawAction;
 
       const result = await withTx(async (tx) => {
         // Atomically consume JTI and invalidate sibling token
@@ -716,12 +722,8 @@ export async function proposalRoutes(server: FastifyInstance): Promise<void> {
     '/faculty/proposals',
     { preHandler: [requireAuth, requireFaculty] },
     async (request: FastifyRequest, reply: FastifyReply) => {
-      const user = request.user!;
-
-      const queryConditions =
-        user.role === UserRole.ADMIN
-          ? undefined
-          : eq(eventProposals.facultyId, user.id);
+      const { status } = (request.query as { status?: string }) || {};
+      const queryConditions = status ? eq(eventProposals.status, status as any) : undefined;
 
       const proposals = await db
         .select({
@@ -780,17 +782,21 @@ export async function proposalRoutes(server: FastifyInstance): Promise<void> {
       }
 
       // Generate action token and invoke common logic
+      const action =
+        body.status === ProposalStatus.APPROVED || (body.status as string) === 'APPROVED'
+          ? 'APPROVE'
+          : 'REJECT';
       const tokenData = await signApprovalToken({
         proposalId: proposal.id,
         facultyId: request.user!.id,
-        action: body.status,
+        action,
       });
 
       // Forward to decision processor
       const response = await server.inject({
         method: 'POST',
         url: '/public/faculty/decision',
-        payload: { token: tokenData.token },
+        payload: { token: tokenData.token, notes: body.decisionNotes },
       });
 
       return reply.status(response.statusCode).send(JSON.parse(response.body));
