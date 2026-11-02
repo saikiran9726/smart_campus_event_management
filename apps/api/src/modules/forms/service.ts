@@ -240,11 +240,19 @@ export async function submitAnswers(
 }
 
 /**
- * Escapes a cell value according to RFC 4180 CSV standard.
+ * Escapes a cell value according to RFC 4180 CSV standard and neutralizes
+ * CSV Formula Injection (CWE-1236) by prepending a single quote to cells
+ * starting with formula trigger characters (=, +, -, @, \t, \r).
  */
 export function escapeCsv(val: unknown): string {
   if (val === null || val === undefined) return '';
   let str = typeof val === 'object' ? JSON.stringify(val) : String(val);
+
+  // Neutralize CSV Formula Injection (CWE-1236), including leading whitespace bypasses
+  if (/^\s*[=+\-@\t\r]/.test(str)) {
+    str = `'${str}`;
+  }
+
   if (
     str.includes(',') ||
     str.includes('"') ||

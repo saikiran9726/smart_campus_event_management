@@ -508,7 +508,7 @@ describe('Analytics, Macro Trends, & NAAC/NBA Report Engine Suite', () => {
            $1,
            u.id,
            'CONFIRMED',
-           NOW() - (random() * 3600 || ' seconds')::interval
+           NOW() - (floor(random() * 3600)::text || ' seconds')::interval
          FROM inserted_users u
          RETURNING id, event_id, user_id
        )
@@ -520,7 +520,7 @@ describe('Analytics, Macro Trends, & NAAC/NBA Report Engine Suite', () => {
          r.user_id,
          'ev_tok_' || substring(md5(random()::text) from 1 for 25),
          'CHECKED_IN',
-         NOW() - (random() * 3600 || ' seconds')::interval,
+         NOW() - (floor(random() * 3600)::text || ' seconds')::interval,
          NOW()
        FROM inserted_regs r`,
       [largePerfEvent.id, ts]

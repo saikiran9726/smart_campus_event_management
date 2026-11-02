@@ -16,6 +16,7 @@ import {
   Registration,
   registrations,
   Ticket,
+  tickets,
   User,
 } from '../../db/schema';
 import { env } from '../../env';
@@ -104,6 +105,28 @@ export async function handleSandboxWebhook(params: {
         `Registration '${payment.registrationId}' not found.`,
         404
       );
+    }
+
+    // Idempotency: if payment already completed, return existing result without duplicate ledger entries or tickets
+    if (payment.status === PaymentStatus.SUCCEEDED) {
+      const [existingTicket] = await tx
+        .select()
+        .from(tickets)
+        .where(eq(tickets.registrationId, registration.id))
+        .limit(1);
+
+      return {
+        outcome: 'SUCCEEDED',
+        payment,
+        ticket: existingTicket,
+      };
+    }
+
+    if (payment.status === PaymentStatus.FAILED) {
+      return {
+        outcome: 'FAILED',
+        payment,
+      };
     }
 
     if (simulate === 'SUCCESS') {

@@ -689,5 +689,96 @@ describe('Academic OD Letters, Verified Reviews, Public Verify, OG Cards, Linked
       expect(csv).toContain('2000.00');
       expect(csv).toContain('1st place trophy and cash grant');
     });
+
+    it('enforces object-level authorization on club budget routes (403 for non-organizer students)', async () => {
+      // 1. GET /clubs/:id/budget
+      const getRes = await server.inject({
+        method: 'GET',
+        url: `/clubs/${testClub.id}/budget`,
+        headers: { 'x-test-user-id': attendeeUser.id },
+      });
+      expect(getRes.statusCode).toBe(403);
+
+      // 2. POST /clubs/:id/allocations
+      const postAllocRes = await server.inject({
+        method: 'POST',
+        url: `/clubs/${testClub.id}/allocations`,
+        headers: { 'x-test-user-id': attendeeUser.id },
+        payload: {
+          category: 'Unauthorized',
+          allocatedPaise: 50000,
+        },
+      });
+      expect(postAllocRes.statusCode).toBe(403);
+
+      // 3. POST /allocations/:id/expenses
+      const postExpRes = await server.inject({
+        method: 'POST',
+        url: `/allocations/${allocation.id}/expenses`,
+        headers: { 'x-test-user-id': attendeeUser.id },
+        payload: {
+          category: 'Unauthorized',
+          amountPaise: 10000,
+          description: 'Attacker expense',
+          receiptKey: 'test_key',
+        },
+      });
+      expect(postExpRes.statusCode).toBe(403);
+
+      // 4. GET /clubs/:id/budget/export.csv
+      const exportRes = await server.inject({
+        method: 'GET',
+        url: `/clubs/${testClub.id}/budget/export.csv`,
+        headers: { 'x-test-user-id': attendeeUser.id },
+      });
+      expect(exportRes.statusCode).toBe(403);
+    });
+
+    it('enforces cross-club isolation: organizers of other clubs cannot access or modify budget (403)', async () => {
+      const ts = Date.now();
+      const [otherOrganizer] = await db
+        .insert(users)
+        .values({
+          clerkId: `clerk_other_org_${ts}`,
+          email: `other_org_${ts}@eventora.edu`,
+          fullName: 'Other Club Organizer',
+          role: UserRole.ORGANIZER,
+        })
+        .returning();
+
+      // Cross-club budget overview
+      const getRes = await server.inject({
+        method: 'GET',
+        url: `/clubs/${testClub.id}/budget`,
+        headers: { 'x-test-user-id': otherOrganizer!.id },
+      });
+      expect(getRes.statusCode).toBe(403);
+
+      // Cross-club allocation creation
+      const postAllocRes = await server.inject({
+        method: 'POST',
+        url: `/clubs/${testClub.id}/allocations`,
+        headers: { 'x-test-user-id': otherOrganizer!.id },
+        payload: {
+          category: 'Unauthorized Hack',
+          allocatedPaise: 50000,
+        },
+      });
+      expect(postAllocRes.statusCode).toBe(403);
+
+      // Cross-club expense addition
+      const postExpRes = await server.inject({
+        method: 'POST',
+        url: `/allocations/${allocation.id}/expenses`,
+        headers: { 'x-test-user-id': otherOrganizer!.id },
+        payload: {
+          category: 'Unauthorized Expense',
+          amountPaise: 10000,
+          description: 'Cross-club expense attack',
+          receiptKey: 'test_key',
+        },
+      });
+      expect(postExpRes.statusCode).toBe(403);
+    });
   });
 });

@@ -1,4 +1,5 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { env } from '../../env';
 import { AppError } from '../../lib/app-error';
 import { requireAuth } from '../../plugins/auth';
 import {
@@ -57,11 +58,15 @@ export async function paymentRoutes(server: FastifyInstance): Promise<void> {
   server.post(
     '/webhooks/sandbox',
     async (request: FastifyRequest, reply: FastifyReply) => {
+      if (env.PAYMENT_MODE !== 'sandbox') {
+        throw new AppError('FORBIDDEN', 'Sandbox webhooks are disabled outside sandbox mode.', 403);
+      }
+
       const signature = request.headers['x-sandbox-signature'] as string | undefined;
       const rawBody = JSON.stringify(request.body);
 
-      if (signature && !verifySandboxWebhookSignature(rawBody, signature)) {
-        throw new AppError('FORBIDDEN', 'Invalid sandbox webhook signature.', 403);
+      if (!signature || !verifySandboxWebhookSignature(rawBody, signature)) {
+        throw new AppError('FORBIDDEN', 'Invalid or missing sandbox webhook signature.', 403);
       }
 
       const body = request.body as any;

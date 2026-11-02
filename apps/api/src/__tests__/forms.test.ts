@@ -18,6 +18,7 @@ import {
   users,
 } from '../db/schema';
 import {
+  escapeCsv,
   freezeFormIfNeeded,
   submitAnswers,
 } from '../modules/forms/service';
@@ -771,6 +772,23 @@ describe('Google-Forms-Style Dynamic Form Engine + Schema Freeze', () => {
       // Check data rows
       expect(csv).toContain('Alice Doe');
       expect(csv).toContain('Bob Smith');
+    });
+
+    it('escapeCsv neutralizes CSV formula injection characters (CWE-1236)', () => {
+      // Direct formula triggers & leading whitespace bypasses
+      expect(escapeCsv('=cmd|"/C calc"!A0')).toBe(`"'=cmd|""/C calc""!A0"`);
+      expect(escapeCsv('   =cmd|"/C calc"!A0')).toBe(`"'   =cmd|""/C calc""!A0"`);
+      expect(escapeCsv('+12345')).toBe(`'+12345`);
+      expect(escapeCsv('  +12345')).toBe(`'  +12345`);
+      expect(escapeCsv('-@dangerous')).toBe(`'-@dangerous`);
+      expect(escapeCsv('@SUM(A1:A10)')).toBe(`'@SUM(A1:A10)`);
+      expect(escapeCsv('\tTAB_PREFIX')).toBe(`'\tTAB_PREFIX`);
+
+      // Normal benign values remain clean or normally quoted
+      expect(escapeCsv('Normal text')).toBe('Normal text');
+      expect(escapeCsv('Text, with comma')).toBe('"Text, with comma"');
+      expect(escapeCsv(null)).toBe('');
+      expect(escapeCsv(undefined)).toBe('');
     });
 
     it('GET /events/:eventId/form/insights returns statistical aggregations', async () => {
