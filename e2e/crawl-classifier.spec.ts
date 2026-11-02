@@ -671,6 +671,102 @@ test.describe('Crawler Hardening & Regression Audit Suite (Prompt 26C)', () => {
       expect(effectWithSuccess.hasEffect).toBe(true);
       expect(effectWithSuccess.reason).toBe('Correlated network request completed');
     });
+
+    test('3.14 Theme interaction effect verification: root class, theme attributes, computed styles, and genuine failure detection', () => {
+      const lightSnapshot: UIStateSnapshot = {
+        url: 'http://localhost:3000/',
+        bodyText: 'Eventora Discovery Feed',
+        hasOpenOverlay: false,
+        buttonAriaExpanded: null,
+        buttonAriaPressed: null,
+        buttonAriaSelected: null,
+        buttonDataState: null,
+        buttonAriaLabel: 'Switch to dark mode',
+        buttonTitle: 'Switch to dark mode',
+        rootClass: 'light',
+        rootThemeAttr: 'light',
+        computedThemeStyles: {
+          backgroundColor: 'rgb(248, 250, 252)',
+          color: 'rgb(15, 23, 42)',
+        },
+      };
+
+      // 1. Light to dark transition (root class and aria-label change)
+      const darkSnapshot: UIStateSnapshot = {
+        ...lightSnapshot,
+        buttonAriaLabel: 'Switch to light mode',
+        buttonTitle: 'Switch to light mode',
+        rootClass: 'dark',
+        rootThemeAttr: 'dark',
+        computedThemeStyles: {
+          backgroundColor: 'rgb(11, 15, 25)',
+          color: 'rgb(248, 250, 252)',
+        },
+      };
+      const lightToDarkEffect = detectInteractionEffect(lightSnapshot, darkSnapshot, false);
+      expect(lightToDarkEffect.hasEffect).toBe(true);
+      expect(lightToDarkEffect.reason).toBe('Button accessible/active state updated');
+
+      // 2. Dark to light transition with identical button aria-label (pure root class change)
+      const pureRootClassLight = { ...lightSnapshot, buttonAriaLabel: 'Toggle Theme', buttonTitle: 'Toggle Theme' };
+      const pureRootClassDark = { ...darkSnapshot, buttonAriaLabel: 'Toggle Theme', buttonTitle: 'Toggle Theme' };
+      const darkToLightEffect = detectInteractionEffect(pureRootClassDark, pureRootClassLight, false);
+      expect(darkToLightEffect.hasEffect).toBe(true);
+      expect(darkToLightEffect.reason).toBe('Theme state or styles updated');
+
+      // 3. Computed style changes (background/color change without class attribute change)
+      const styleBefore: UIStateSnapshot = {
+        url: 'http://localhost:3000/',
+        bodyText: 'Eventora Feed',
+        hasOpenOverlay: false,
+        computedThemeStyles: {
+          backgroundColor: 'rgb(248, 250, 252)',
+          color: 'rgb(15, 23, 42)',
+        },
+      };
+      const styleAfter: UIStateSnapshot = {
+        ...styleBefore,
+        computedThemeStyles: {
+          backgroundColor: 'rgb(11, 15, 25)',
+          color: 'rgb(248, 250, 252)',
+        },
+      };
+      const styleEffect = detectInteractionEffect(styleBefore, styleAfter, false);
+      expect(styleEffect.hasEffect).toBe(true);
+      expect(styleEffect.reason).toBe('Theme state or styles updated');
+
+      // 4. Root theme attribute changes (e.g. data-theme="dark")
+      const attrBefore: UIStateSnapshot = {
+        url: 'http://localhost:3000/',
+        bodyText: 'Eventora Feed',
+        hasOpenOverlay: false,
+        rootThemeAttr: 'light',
+      };
+      const attrAfter: UIStateSnapshot = {
+        ...attrBefore,
+        rootThemeAttr: 'dark',
+      };
+      const attrEffect = detectInteractionEffect(attrBefore, attrAfter, false);
+      expect(attrEffect.hasEffect).toBe(true);
+      expect(attrEffect.reason).toBe('Theme state or styles updated');
+
+      // 5. Genuine failure detection: inert button where neither class, styles, attributes, nor text change
+      const inertThemeButton: UIStateSnapshot = {
+        url: 'http://localhost:3000/',
+        bodyText: 'Eventora Feed',
+        hasOpenOverlay: false,
+        buttonAriaLabel: 'Switch to dark mode',
+        rootClass: 'light',
+        rootThemeAttr: 'light',
+        computedThemeStyles: {
+          backgroundColor: 'rgb(248, 250, 252)',
+          color: 'rgb(15, 23, 42)',
+        },
+      };
+      const brokenInteraction = detectInteractionEffect(inertThemeButton, { ...inertThemeButton }, false);
+      expect(brokenInteraction.hasEffect).toBe(false);
+      expect(brokenInteraction.reason).toContain('Button caused no visible UI, ARIA, overlay, navigation, theme, or correlated request change');
+    });
   });
 
   // =========================================================================

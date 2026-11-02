@@ -1,5 +1,5 @@
 import React from 'react';
-import { render } from '@testing-library/react';
+import { render, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import axe from 'axe-core';
@@ -73,5 +73,67 @@ describe('AppShell Accessibility & Structure', () => {
     }
 
     expect(results.violations).toEqual([]);
+  });
+
+  describe('Theme Toggle Interaction & Accessibility Suite', () => {
+    it('toggles theme from light to dark and updates document root class and aria-label', async () => {
+      localStorage.clear();
+      document.documentElement.className = '';
+
+      const { findByRole } = render(
+        <MemoryRouter initialEntries={['/']}>
+          <ThemeProvider defaultTheme="light">
+            <AppShell />
+          </ThemeProvider>
+        </MemoryRouter>
+      );
+
+      const toggleBtn = await findByRole('button', { name: /switch to dark mode/i });
+      expect(toggleBtn).toBeInTheDocument();
+      expect(document.documentElement.classList.contains('dark')).toBe(false);
+
+      fireEvent.click(toggleBtn);
+
+      expect(document.documentElement.classList.contains('dark')).toBe(true);
+      expect(document.documentElement.classList.contains('light')).toBe(false);
+      expect(toggleBtn).toHaveAttribute('aria-label', 'Switch to light mode');
+    });
+
+    it('toggles theme from dark to light and updates document root class and aria-label', async () => {
+      localStorage.clear();
+      document.documentElement.className = '';
+
+      const { findByRole } = render(
+        <MemoryRouter initialEntries={['/']}>
+          <ThemeProvider defaultTheme="dark">
+            <AppShell />
+          </ThemeProvider>
+        </MemoryRouter>
+      );
+
+      const toggleBtn = await findByRole('button', { name: /switch to light mode/i });
+      expect(toggleBtn).toBeInTheDocument();
+      expect(document.documentElement.classList.contains('dark')).toBe(true);
+
+      fireEvent.click(toggleBtn);
+
+      expect(document.documentElement.classList.contains('light')).toBe(true);
+      expect(document.documentElement.classList.contains('dark')).toBe(false);
+      expect(toggleBtn).toHaveAttribute('aria-label', 'Switch to dark mode');
+    });
+
+    it('renders theme toggle control in navigation header across viewport layouts', async () => {
+      const { findByRole } = render(
+        <MemoryRouter initialEntries={['/']}>
+          <ThemeProvider defaultTheme="light">
+            <AppShell />
+          </ThemeProvider>
+        </MemoryRouter>
+      );
+
+      const toggleBtn = await findByRole('button', { name: /switch to dark mode/i });
+      expect(toggleBtn).toBeInTheDocument();
+      expect(toggleBtn.className).not.toContain('hidden');
+    });
   });
 });
