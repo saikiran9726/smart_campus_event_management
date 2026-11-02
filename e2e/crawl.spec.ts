@@ -357,6 +357,19 @@ for (const roleDef of ROLES) {
               const initialHasOverlay = await page.evaluate(() =>
                 Boolean(document.querySelector('[role="dialog"], [aria-modal="true"], [data-radix-popper-content-wrapper], [data-state="open"]'))
               ).catch(() => false);
+              const initialThemeState = await page.evaluate(() => {
+                const root = document.documentElement;
+                const body = document.body;
+                const bodyStyle = body ? window.getComputedStyle(body) : null;
+                return {
+                  rootClass: root.className || '',
+                  rootThemeAttr: root.getAttribute('data-theme') || (body ? body.getAttribute('data-theme') : null),
+                  computedThemeStyles: {
+                    backgroundColor: bodyStyle ? bodyStyle.backgroundColor : '',
+                    color: bodyStyle ? bodyStyle.color : '',
+                  },
+                };
+              }).catch(() => null);
 
               // Correlated network request tracking:
               // Only consider responses to requests that were INITIATED during this interaction window.
@@ -401,6 +414,21 @@ for (const roleDef of ROLES) {
                 const newAriaPressed = await btn.getAttribute('aria-pressed', { timeout: 1000 }).catch(() => null);
                 const newAriaSelected = await btn.getAttribute('aria-selected', { timeout: 1000 }).catch(() => null);
                 const newDataState = await btn.getAttribute('data-state', { timeout: 1000 }).catch(() => null);
+                const newAriaLabel = await btn.getAttribute('aria-label', { timeout: 1000 }).catch(() => null);
+                const newTitle = await btn.getAttribute('title', { timeout: 1000 }).catch(() => null);
+                const newThemeState = await page.evaluate(() => {
+                  const root = document.documentElement;
+                  const body = document.body;
+                  const bodyStyle = body ? window.getComputedStyle(body) : null;
+                  return {
+                    rootClass: root.className || '',
+                    rootThemeAttr: root.getAttribute('data-theme') || (body ? body.getAttribute('data-theme') : null),
+                    computedThemeStyles: {
+                      backgroundColor: bodyStyle ? bodyStyle.backgroundColor : '',
+                      color: bodyStyle ? bodyStyle.color : '',
+                    },
+                  };
+                }).catch(() => null);
 
                 const effect = detectInteractionEffect(
                   {
@@ -411,6 +439,11 @@ for (const roleDef of ROLES) {
                     buttonAriaPressed: ariaPressed,
                     buttonAriaSelected: ariaSelected,
                     buttonDataState: dataState,
+                    buttonAriaLabel: ariaLabel,
+                    buttonTitle: title,
+                    rootClass: initialThemeState?.rootClass,
+                    rootThemeAttr: initialThemeState?.rootThemeAttr,
+                    computedThemeStyles: initialThemeState?.computedThemeStyles,
                   },
                   {
                     url: newUrl,
@@ -420,6 +453,11 @@ for (const roleDef of ROLES) {
                     buttonAriaPressed: newAriaPressed,
                     buttonAriaSelected: newAriaSelected,
                     buttonDataState: newDataState,
+                    buttonAriaLabel: newAriaLabel,
+                    buttonTitle: newTitle,
+                    rootClass: newThemeState?.rootClass,
+                    rootThemeAttr: newThemeState?.rootThemeAttr,
+                    computedThemeStyles: newThemeState?.computedThemeStyles,
                   },
                   correlatedRequestCompleted
                 );

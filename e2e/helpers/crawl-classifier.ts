@@ -712,6 +712,14 @@ export interface UIStateSnapshot {
   buttonAriaPressed?: string | null;
   buttonAriaSelected?: string | null;
   buttonDataState?: string | null;
+  buttonAriaLabel?: string | null;
+  buttonTitle?: string | null;
+  rootClass?: string;
+  rootThemeAttr?: string | null;
+  computedThemeStyles?: {
+    backgroundColor?: string;
+    color?: string;
+  };
 }
 
 export interface InteractionEffectResult {
@@ -810,19 +818,47 @@ export function detectInteractionEffect(
     before.buttonAriaExpanded !== after.buttonAriaExpanded ||
     before.buttonAriaPressed !== after.buttonAriaPressed ||
     before.buttonAriaSelected !== after.buttonAriaSelected ||
-    before.buttonDataState !== after.buttonDataState
+    before.buttonDataState !== after.buttonDataState ||
+    (before.buttonAriaLabel && after.buttonAriaLabel && before.buttonAriaLabel !== after.buttonAriaLabel) ||
+    (before.buttonTitle && after.buttonTitle && before.buttonTitle !== after.buttonTitle)
   ) {
     return { hasEffect: true, reason: 'Button accessible/active state updated' };
   }
 
-  // 5. Visible text content changed (even if HTML length happens to be identical)
+  // 5. Theme root class, data-theme attribute, or computed theme styles updated
+  const rootClassChanged =
+    before.rootClass !== undefined &&
+    after.rootClass !== undefined &&
+    before.rootClass !== after.rootClass;
+
+  const rootThemeAttrChanged =
+    before.rootThemeAttr !== undefined &&
+    after.rootThemeAttr !== undefined &&
+    before.rootThemeAttr !== after.rootThemeAttr;
+
+  const computedThemeChanged = Boolean(
+    before.computedThemeStyles &&
+      after.computedThemeStyles &&
+      ((before.computedThemeStyles.backgroundColor &&
+        after.computedThemeStyles.backgroundColor &&
+        before.computedThemeStyles.backgroundColor !== after.computedThemeStyles.backgroundColor) ||
+        (before.computedThemeStyles.color &&
+          after.computedThemeStyles.color &&
+          before.computedThemeStyles.color !== after.computedThemeStyles.color))
+  );
+
+  if (rootClassChanged || rootThemeAttrChanged || computedThemeChanged) {
+    return { hasEffect: true, reason: 'Theme state or styles updated' };
+  }
+
+  // 6. Visible text content changed (even if HTML length happens to be identical)
   if (before.bodyText !== after.bodyText) {
     return { hasEffect: true, reason: 'Visible page text updated' };
   }
 
   return {
     hasEffect: false,
-    reason: 'Button caused no visible UI, ARIA, overlay, navigation, or correlated request change',
+    reason: 'Button caused no visible UI, ARIA, overlay, navigation, theme, or correlated request change',
   };
 }
 
