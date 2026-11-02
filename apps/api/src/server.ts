@@ -152,7 +152,7 @@ export function buildServer(opts: FastifyServerOptions = {}): FastifyInstance {
   });
 
   server.register(rateLimit, {
-    max: 300,
+    max: env.NODE_ENV === 'test' ? 10000 : 300,
     timeWindow: '1 minute',
   });
 

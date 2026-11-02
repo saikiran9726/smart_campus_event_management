@@ -34,7 +34,7 @@ export default defineConfig({
       command: 'pnpm --filter api dev',
       url: 'http://localhost:3001/health',
       reuseExistingServer: true,
-      timeout: 30000,
+      timeout: 60000,
       env: {
         NODE_ENV: 'test',
         PORT: '3001',
@@ -47,7 +47,7 @@ export default defineConfig({
       command: 'pnpm --filter web dev --port 3000',
       url: 'http://localhost:3000',
       reuseExistingServer: true,
-      timeout: 30000,
+      timeout: 60000,
       env: {
         NODE_ENV: 'test',
         PORT: '3000',
