@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
+import { copyToClipboard } from '@/lib/clipboard';
 
 export interface EventDetailData {
   id: string;
@@ -104,12 +105,17 @@ export const EventPage: React.FC = () => {
       ? 'Free'
       : `₹${(event.pricePaise / 100).toFixed(2)}`;
 
-  const shareEvent = () => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(window.location.href);
+  const shareEvent = async () => {
+    const success = await copyToClipboard(window.location.href);
+    if (success) {
       toast({
         title: 'Event Link Copied',
         description: 'Shareable event URL copied to clipboard.',
+      });
+    } else {
+      toast({
+        title: 'Unable to Copy Link',
+        description: 'Clipboard access was restricted. Please copy the URL from your address bar.',
       });
     }
   };

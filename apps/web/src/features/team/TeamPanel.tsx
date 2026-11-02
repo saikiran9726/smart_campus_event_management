@@ -6,6 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { CountdownTimer } from '@/components/primitives/countdown-timer';
 import { toast } from '@/components/ui/use-toast';
+import { copyToClipboard } from '@/lib/clipboard';
 import { api } from '@/lib/api';
 import { useSocketEvent } from '@/lib/socket';
 import {
@@ -81,15 +82,22 @@ export const TeamPanel: React.FC<TeamPanelProps> = ({
     }
   });
 
-  const copyInviteCode = () => {
+  const copyInviteCode = async () => {
     if (!team?.inviteCode) return;
-    navigator.clipboard.writeText(team.inviteCode);
-    setIsCopied(true);
-    toast({
-      title: 'Invite Code Copied',
-      description: `Team code ${team.inviteCode} copied to clipboard.`,
-    });
-    setTimeout(() => setIsCopied(false), 2000);
+    const success = await copyToClipboard(team.inviteCode);
+    if (success) {
+      setIsCopied(true);
+      toast({
+        title: 'Invite Code Copied',
+        description: 'Team invite code copied to clipboard.',
+      });
+      setTimeout(() => setIsCopied(false), 2000);
+    } else {
+      toast({
+        title: 'Unable to Copy Invite Code',
+        description: 'Clipboard access was restricted. Please copy the code manually.',
+      });
+    }
   };
 
   const handleCreateTeam = async (e: React.FormEvent) => {

@@ -11,6 +11,8 @@ import { PassportPage } from '@/features/passport/PassportPage';
 import { getSocket, emitSocketEvent } from '@/lib/socket';
 import { api } from '@/lib/api';
 import { QuestionType, FormQuestionDef } from '@eventora/shared';
+import * as toastModule from '@/components/ui/use-toast';
+import * as clipboardModule from '@/lib/clipboard';
 
 // Mock Auth
 vi.mock('@/lib/auth', () => ({
@@ -56,6 +58,7 @@ describe('Student UI Comprehensive Flow Suite', () => {
 
   afterEach(() => {
     queryClient.clear();
+    vi.restoreAllMocks();
   });
 
   describe('1. Discovery Feed: Skeletons, Cards & Empty State with Reset', () => {
@@ -162,6 +165,96 @@ describe('Student UI Comprehensive Flow Suite', () => {
       await waitFor(() => {
         expect(screen.getByTestId('event-cta-button')).toHaveTextContent('Join Queue');
       });
+    });
+
+    it('Share button copies event link and shows success toast when clipboard succeeds', async () => {
+      const mockEventId = '69ce65df-439d-483c-ae19-04197c477d63';
+      vi.spyOn(api, 'get').mockResolvedValueOnce({
+        event: {
+          id: mockEventId,
+          slug: 'hackathon-2026',
+          title: 'Autonomous AI Hackathon 2026',
+          status: 'PUBLISHED',
+          capacity: 100,
+          seatsRemaining: 15,
+          pricePaise: 0,
+        },
+      } as any);
+
+      const copySpy = vi.spyOn(clipboardModule, 'copyToClipboard').mockResolvedValue(true);
+      const toastSpy = vi.spyOn(toastModule, 'toast');
+
+      try {
+        render(
+          <QueryClientProvider client={queryClient}>
+            <MemoryRouter initialEntries={['/events/hackathon-2026']}>
+              <Routes>
+                <Route path="/events/:slug" element={<EventPage />} />
+              </Routes>
+            </MemoryRouter>
+          </QueryClientProvider>
+        );
+
+        const shareBtn = await screen.findByRole('button', { name: /share/i });
+        fireEvent.click(shareBtn);
+
+        await waitFor(() => {
+          expect(copySpy).toHaveBeenCalledTimes(1);
+          expect(toastSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+              title: 'Event Link Copied',
+            })
+          );
+        });
+      } finally {
+        copySpy.mockRestore();
+        toastSpy.mockRestore();
+      }
+    });
+
+    it('Share button handles clipboard failure gracefully with accurate feedback and zero unhandled rejections', async () => {
+      const mockEventId = '69ce65df-439d-483c-ae19-04197c477d63';
+      vi.spyOn(api, 'get').mockResolvedValueOnce({
+        event: {
+          id: mockEventId,
+          slug: 'hackathon-2026',
+          title: 'Autonomous AI Hackathon 2026',
+          status: 'PUBLISHED',
+          capacity: 100,
+          seatsRemaining: 15,
+          pricePaise: 0,
+        },
+      } as any);
+
+      const copySpy = vi.spyOn(clipboardModule, 'copyToClipboard').mockResolvedValue(false);
+      const toastSpy = vi.spyOn(toastModule, 'toast');
+
+      try {
+        render(
+          <QueryClientProvider client={queryClient}>
+            <MemoryRouter initialEntries={['/events/hackathon-2026']}>
+              <Routes>
+                <Route path="/events/:slug" element={<EventPage />} />
+              </Routes>
+            </MemoryRouter>
+          </QueryClientProvider>
+        );
+
+        const shareBtn = await screen.findByRole('button', { name: /share/i });
+        fireEvent.click(shareBtn);
+
+        await waitFor(() => {
+          expect(copySpy).toHaveBeenCalledTimes(1);
+          expect(toastSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+              title: 'Unable to Copy Link',
+            })
+          );
+        });
+      } finally {
+        copySpy.mockRestore();
+        toastSpy.mockRestore();
+      }
     });
   });
 

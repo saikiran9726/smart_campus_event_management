@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/use-toast';
+import { copyToClipboard } from '@/lib/clipboard';
 import { AuthenticatedQrImage } from './AuthenticatedQrImage';
 import {
   Ticket,
@@ -323,12 +324,14 @@ export const PassportPage: React.FC = () => {
         `/certificates/${cert.id}/share`,
         { showToast: false }
       );
-      if (navigator.clipboard && shareData.caption) {
-        await navigator.clipboard.writeText(shareData.caption);
-        toast({
-          title: 'Caption Copied!',
-          description: 'Caption copied: paste it in your post.',
-        });
+      if (shareData.caption) {
+        const copied = await copyToClipboard(shareData.caption);
+        if (copied) {
+          toast({
+            title: 'Caption Copied!',
+            description: 'Caption copied: paste it in your post.',
+          });
+        }
       }
       if (shareData.linkedinUrl) {
         window.open(shareData.linkedinUrl, '_blank', 'noopener,noreferrer');

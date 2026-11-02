@@ -29,6 +29,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
+import { copyToClipboard } from '@/lib/clipboard';
 
 interface GateStats {
   checkedIn: number;
@@ -372,11 +373,15 @@ export const GateOps: React.FC = () => {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => {
-                  navigator.clipboard.writeText(newlyCreatedPasskey.code);
-                  setHasCopiedCode(true);
-                  toast.success('Passkey copied to clipboard!');
-                  setTimeout(() => setHasCopiedCode(false), 2000);
+                onClick={async () => {
+                  const success = await copyToClipboard(newlyCreatedPasskey.code);
+                  if (success) {
+                    setHasCopiedCode(true);
+                    toast.success('Passkey copied to clipboard!');
+                    setTimeout(() => setHasCopiedCode(false), 2000);
+                  } else {
+                    toast.error('Could not copy passkey. Please copy it manually.');
+                  }
                 }}
                 className="gap-1.5 h-11"
                 data-testid="btn-copy-passkey"
