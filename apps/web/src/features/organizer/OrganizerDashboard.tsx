@@ -225,6 +225,7 @@ export const OrganizerDashboard: React.FC = () => {
                 variant={statusFilter === filter ? 'default' : 'outline'}
                 size="sm"
                 className="h-8 text-xs font-semibold px-3"
+                aria-pressed={statusFilter === filter}
                 onClick={() => setStatusFilter(filter)}
               >
                 {filter}

@@ -39,6 +39,48 @@ export function useMyClubs() {
   });
 }
 
+function safeGetStorage(key: string): string | null {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      return window.localStorage.getItem(key);
+    }
+    if (typeof localStorage !== 'undefined' && localStorage) {
+      return localStorage.getItem(key);
+    }
+  } catch {
+    // In environments with blocked/restricted storage
+  }
+  return null;
+}
+
+function safeSetStorage(key: string, value: string): void {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(key, value);
+      return;
+    }
+    if (typeof localStorage !== 'undefined' && localStorage) {
+      localStorage.setItem(key, value);
+    }
+  } catch {
+    // Storage quota or restriction failure
+  }
+}
+
+function safeRemoveStorage(key: string): void {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.removeItem(key);
+      return;
+    }
+    if (typeof localStorage !== 'undefined' && localStorage) {
+      localStorage.removeItem(key);
+    }
+  } catch {
+    // Ignore
+  }
+}
+
 export const ActiveClubProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isSignedIn } = useAuth();
   const queryClient = useQueryClient();
@@ -57,7 +99,7 @@ export const ActiveClubProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const [activeClubId, setActiveClubIdState] = useState<string | null>(() => {
     if (!storageKey) return null;
-    return localStorage.getItem(storageKey);
+    return safeGetStorage(storageKey);
   });
 
   // Reconcile and validate against fetched clubs
@@ -71,12 +113,12 @@ export const ActiveClubProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     if (clubs.length === 0) {
       setActiveClubIdState(null);
-      if (storageKey) localStorage.removeItem(storageKey);
+      if (storageKey) safeRemoveStorage(storageKey);
       return;
     }
 
     // Check if current stored / selected activeClubId is valid in fetched memberships
-    const currentId = activeClubId || (storageKey ? localStorage.getItem(storageKey) : null);
+    const currentId = activeClubId || (storageKey ? safeGetStorage(storageKey) : null);
     const isValid = currentId && clubs.some((c) => c.id === currentId);
 
     if (isValid) {
@@ -89,7 +131,7 @@ export const ActiveClubProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (defaultId) {
         setActiveClubIdState(defaultId);
         if (storageKey) {
-          localStorage.setItem(storageKey, defaultId);
+          safeSetStorage(storageKey, defaultId);
         }
       }
     }
@@ -101,7 +143,7 @@ export const ActiveClubProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     setActiveClubIdState(newId);
     if (storageKey) {
-      localStorage.setItem(storageKey, newId);
+      safeSetStorage(storageKey, newId);
     }
   };
 

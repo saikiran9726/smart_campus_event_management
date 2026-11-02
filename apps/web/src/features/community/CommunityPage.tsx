@@ -197,6 +197,7 @@ export const CommunityPage: React.FC = () => {
                 key={c.id}
                 size="sm"
                 variant={selectedClubId === c.id ? 'default' : 'outline'}
+                aria-pressed={selectedClubId === c.id}
                 onClick={() => setSelectedClubId(c.id)}
                 className="text-xs h-8 rounded-full"
               >
@@ -264,6 +265,7 @@ export const CommunityPage: React.FC = () => {
                     type="button"
                     onClick={() => handleSelectChannel(chan.id)}
                     data-testid={`channel-item-${chan.name}`}
+                    aria-pressed={isActive}
                     className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left text-sm font-semibold transition-all ${
                       isActive
                         ? 'bg-indigo-600 text-white shadow-md'
