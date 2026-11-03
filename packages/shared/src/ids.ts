@@ -1,4 +1,3 @@
-import crypto from 'node:crypto';
 import {
   PASSKEY_DIGITS,
   PASSKEY_PREFIX,
@@ -38,8 +37,8 @@ export function sampleRandomChars(alphabet: string, length: number): string {
     const needed = length - result.length;
     // Over-sample slightly to minimize iterations
     const batchSize = Math.max(needed * 2, 32);
-    const buffer = crypto.randomBytes(batchSize);
-
+    const buffer = new Uint8Array(batchSize);
+    globalThis.crypto.getRandomValues(buffer);
     for (let i = 0; i < buffer.length && result.length < length; i++) {
       const byte = buffer[i];
       if (byte !== undefined && byte < maxAcceptable) {
