@@ -3,7 +3,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { UserRole } from '@eventora/shared';
 import { db } from '../../db/client';
-import { notifications, users } from '../../db/schema';
+import { auditLogs, notifications, users } from '../../db/schema';
 import { AppError } from '../../lib/app-error';
 import { requireRole } from '../../middleware/rbac';
 import { requireAuth } from '../../plugins/auth';
@@ -71,9 +71,38 @@ export async function commsAdminRoutes(server: FastifyInstance): Promise<void> {
   // 2. POST /admin/notifications/:id/retry (Admin only)
   server.post(
     '/admin/notifications/:id/retry',
-    { preHandler: [requireAuth, requireRole(UserRole.ADMIN)] },
+    {
+      preHandler: [requireAuth, requireRole(UserRole.ADMIN)],
+      schema: {
+        params: z.object({
+          id: z.string().uuid(),
+        }),
+      },
+    },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { id } = request.params as { id: string };
+
+      const [existing] = await db
+        .select()
+        .from(notifications)
+        .where(eq(notifications.id, id))
+        .limit(1);
+
+      if (!existing) {
+        throw new AppError(
+          'NOT_FOUND',
+          `Notification with ID '${id}' was not found.`,
+          404
+        );
+      }
+
+      if (existing.status === 'SENT') {
+        throw new AppError(
+          'CONFLICT',
+          'Cannot retry a notification that has already been successfully delivered.',
+          409
+        );
+      }
 
       const [updated] = await db
         .update(notifications)
@@ -86,13 +115,17 @@ export async function commsAdminRoutes(server: FastifyInstance): Promise<void> {
         .where(eq(notifications.id, id))
         .returning();
 
-      if (!updated) {
-        throw new AppError(
-          'NOT_FOUND',
-          `Notification with ID '${id}' was not found.`,
-          404
-        );
-      }
+      // Record audit history
+      await db.insert(auditLogs).values({
+        actorId: request.user!.id,
+        action: 'NOTIFICATION_RETRY_ENQUEUED',
+        entity: 'notification',
+        entityId: id,
+        diff: {
+          previousStatus: existing.status,
+          previousAttempts: existing.attempts,
+        },
+      });
 
       return reply.status(200).send({
         success: true,

@@ -1,7 +1,9 @@
 import { and, desc, eq, isNotNull } from 'drizzle-orm';
 import { db } from '../../db/client';
 import {
+  auditLogs,
   certificates,
+  clubMembers,
   clubs,
   eventResources,
   events,
@@ -10,6 +12,7 @@ import {
   reviews,
   tickets,
   users,
+  User,
 } from '../../db/schema';
 import { env } from '../../env';
 import { AppError } from '../../lib/app-error';
@@ -46,6 +49,35 @@ export async function getCertificateDetails(certId: string) {
 
   if (!cert) {
     throw new AppError('NOT_FOUND', `Certificate '${certId}' not found.`, 404);
+  }
+
+  // Check if certificate has been revoked in persistent audit history
+  const [revocation] = await db
+    .select({
+      actorId: auditLogs.actorId,
+      createdAt: auditLogs.createdAt,
+      diff: auditLogs.diff,
+    })
+    .from(auditLogs)
+    .where(
+      and(
+        eq(auditLogs.entity, 'certificate'),
+        eq(auditLogs.entityId, certId),
+        eq(auditLogs.action, 'CERTIFICATE_REVOKED')
+      )
+    )
+    .limit(1);
+
+  if (revocation) {
+    throw new AppError(
+      'NOT_FOUND',
+      `Certificate '${certId}' has been officially revoked.`,
+      404,
+      {
+        revokedAt: revocation.createdAt,
+        reason: (revocation.diff as any)?.reason || 'Revoked by authority',
+      }
+    );
   }
 
   const [user] = await db
@@ -219,6 +251,24 @@ export async function getUserPassport(userId: string) {
       )
       .limit(1);
 
+    let activeCert = cert || null;
+    if (cert) {
+      const [isRevoked] = await db
+        .select({ id: auditLogs.id })
+        .from(auditLogs)
+        .where(
+          and(
+            eq(auditLogs.entity, 'certificate'),
+            eq(auditLogs.entityId, cert.id),
+            eq(auditLogs.action, 'CERTIFICATE_REVOKED')
+          )
+        )
+        .limit(1);
+      if (isRevoked) {
+        activeCert = null;
+      }
+    }
+
     // OD letter
     const [od] = await db
       .select({
@@ -281,12 +331,12 @@ export async function getUserPassport(userId: string) {
         registrationId: row.registrationId,
         checkedInAt: row.checkedInAt!.toISOString(),
       },
-      certificate: cert
+      certificate: activeCert
         ? {
-            id: cert.id,
-            kind: cert.kind,
-            rank: cert.rank,
-            issuedAt: cert.issuedAt.toISOString(),
+            id: activeCert.id,
+            kind: activeCert.kind,
+            rank: activeCert.rank,
+            issuedAt: activeCert.issuedAt.toISOString(),
           }
         : null,
       odLetter: od
@@ -380,4 +430,105 @@ export async function getEventResourcesForUser(eventId: string, userId: string, 
     .orderBy(eventResources.createdAt);
 
   return { resources };
+}
+
+export async function revokeCertificate(certId: string, actor: User, reason?: string) {
+  const [cert] = await db
+    .select({
+      id: certificates.id,
+      eventId: certificates.eventId,
+      userId: certificates.userId,
+    })
+    .from(certificates)
+    .where(eq(certificates.id, certId))
+    .limit(1);
+
+  if (!cert) {
+    throw new AppError('NOT_FOUND', `Certificate '${certId}' not found.`, 404);
+  }
+
+  // Check if certificate has been revoked in persistent audit history
+  const [revocation] = await db
+    .select({
+      actorId: auditLogs.actorId,
+      createdAt: auditLogs.createdAt,
+      diff: auditLogs.diff,
+    })
+    .from(auditLogs)
+    .where(
+      and(
+        eq(auditLogs.entity, 'certificate'),
+        eq(auditLogs.entityId, certId),
+        eq(auditLogs.action, 'CERTIFICATE_REVOKED')
+      )
+    )
+    .limit(1);
+
+  if (revocation) {
+    throw new AppError(
+      'CONFLICT',
+      `Certificate '${certId}' has already been revoked.`,
+      409,
+      {
+        revokedAt: revocation.createdAt,
+        reason: (revocation.diff as any)?.reason || 'Revoked by authority',
+      }
+    );
+  }
+
+  // Check authorization: Admin, Club Owner/Admin, or Faculty coordinator
+  let isAuthorized = actor.role === 'ADMIN';
+
+  if (!isAuthorized) {
+    const [event] = await db
+      .select({ clubId: events.clubId })
+      .from(events)
+      .where(eq(events.id, cert.eventId))
+      .limit(1);
+
+    if (event) {
+      const [membership] = await db
+        .select({ role: clubMembers.role })
+        .from(clubMembers)
+        .where(and(eq(clubMembers.clubId, event.clubId), eq(clubMembers.userId, actor.id)))
+        .limit(1);
+
+      if (membership && (membership.role === 'OWNER' || membership.role === 'ADMIN')) {
+        isAuthorized = true;
+      }
+
+      if (!isAuthorized && actor.role === 'FACULTY') {
+        const [club] = await db
+          .select({ facultyCoordinatorId: clubs.facultyCoordinatorId })
+          .from(clubs)
+          .where(eq(clubs.id, event.clubId))
+          .limit(1);
+        if (club && club.facultyCoordinatorId === actor.id) {
+          isAuthorized = true;
+        }
+      }
+    }
+  }
+
+  if (!isAuthorized) {
+    throw new AppError('FORBIDDEN', 'You do not have permission to revoke this certificate.', 403);
+  }
+
+  // Preserve certificate record; record persistent revocation state, timestamp, actor and reason in audit history
+  const now = new Date();
+  await db.insert(auditLogs).values({
+    actorId: actor.id,
+    action: 'CERTIFICATE_REVOKED',
+    entity: 'certificate',
+    entityId: certId,
+    diff: {
+      eventId: cert.eventId,
+      recipientUserId: cert.userId,
+      revokedBy: actor.id,
+      revokedAt: now.toISOString(),
+      reason: reason || 'Revoked by authority',
+    },
+  });
+
+  return { success: true, message: 'Certificate successfully revoked.' };
 }

@@ -44,6 +44,7 @@ import { reviewRoutes } from './modules/reviews';
 import { verifyRoutes } from './modules/verify';
 import { budgetRoutes } from './modules/budget';
 import { analyticsRoutes } from './modules/analytics';
+import { adminRoutes } from './modules/admin/routes';
 
 const allowedDevOrigins = new Set([
   'http://localhost:3000',
@@ -335,6 +336,7 @@ export function buildServer(opts: FastifyServerOptions = {}): FastifyInstance {
   server.register(verifyRoutes);
   server.register(budgetRoutes);
   server.register(analyticsRoutes);
+  server.register(adminRoutes);
 
   return server;
 }
