@@ -161,7 +161,9 @@ export function buildQuestionValidator(question: FormQuestionDef): ZodType {
         .optional();
     }
 
-    case QuestionType.SINGLE_SELECT: {
+    case QuestionType.SINGLE_SELECT:
+    case QuestionType.DROPDOWN:
+    case QuestionType.RADIO: {
       const allowed = question.options ?? [];
 
       const selectSchema = z
@@ -183,6 +185,56 @@ export function buildQuestionValidator(question: FormQuestionDef): ZodType {
           z.undefined(),
         ])
         .optional();
+    }
+
+    case QuestionType.URL: {
+      let urlSchema = z
+        .string({ required_error: `${question.label} is required` })
+        .trim()
+        .url('Invalid URL format');
+
+      if (compiledRegex) {
+        urlSchema = urlSchema.regex(
+          compiledRegex,
+          question.regexErrorMessage ?? 'URL does not match required pattern'
+        );
+      }
+
+      if (question.required) {
+        return urlSchema.min(1, `${question.label} is required`);
+      }
+
+      return z
+        .union([
+          urlSchema,
+          z.literal('').transform(() => undefined),
+          z.null().transform(() => undefined),
+          z.undefined(),
+        ])
+        .optional();
+    }
+
+    case QuestionType.YES_NO: {
+      const yesNoSchema = z.boolean({
+        required_error: `${question.label} is required`,
+        invalid_type_error: `${question.label} must be yes or no`,
+      });
+
+      if (question.required) {
+        return yesNoSchema;
+      }
+
+      return z
+        .union([
+          yesNoSchema,
+          z.null().transform(() => undefined),
+          z.undefined(),
+        ])
+        .optional();
+    }
+
+    case QuestionType.INSTRUCTION: {
+      return z.any().optional().transform(() => undefined);
     }
 
     case QuestionType.MULTI_SELECT: {

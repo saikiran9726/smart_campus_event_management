@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Volunteer Passkeys & Least-Privilege Route Isolation', () => {
-  const API_URL = 'http://localhost:3001';
+  const API_URL = process.env.API_URL || 'http://localhost:4000';
 
   test('organizer creates passkey, volunteer unlocks in fresh context, and cannot access /organizer', async ({
     browser,
@@ -66,7 +66,7 @@ test.describe('Volunteer Passkeys & Least-Privilege Route Isolation', () => {
     // 5. Test API-level route guard: scanner token calling organizer endpoints returns 403 FORBIDDEN
     const forbiddenRes = await volunteerPage.evaluate(async () => {
       const token = sessionStorage.getItem('eventora_scanner_token');
-      const res = await fetch('http://localhost:3001/events', {
+      const res = await fetch('http://localhost:4000/events', {
         headers: {
           Authorization: `Bearer ${token}`,
         },

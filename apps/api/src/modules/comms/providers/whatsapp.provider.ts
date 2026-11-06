@@ -1,4 +1,5 @@
 import { env } from '../../../env';
+import { normalizeIndianPhoneNumber } from '../phone';
 import {
   WhatsAppMessage,
   WhatsAppProvider,
@@ -11,27 +12,62 @@ import {
 export class MetaCloudWhatsAppProvider implements WhatsAppProvider {
   private token: string;
   private phoneId: string;
+  private apiVersion: string;
 
-  constructor(token?: string, phoneId?: string) {
+  constructor(token?: string, phoneId?: string, apiVersion?: string) {
     this.token = token || env.META_WA_TOKEN || '';
     this.phoneId = phoneId || env.META_WA_PHONE_ID || '';
+    this.apiVersion = apiVersion || env.META_WA_API_VERSION || 'v21.0';
+  }
+
+  isConfigured(): boolean {
+    return Boolean(
+      this.token &&
+      this.phoneId &&
+      !this.token.includes('placeholder') &&
+      !this.phoneId.includes('placeholder')
+    );
   }
 
   async send(message: WhatsAppMessage): Promise<WhatsAppProviderResult> {
-    if (!this.token || !this.phoneId) {
-      return { error: 'Meta WhatsApp credentials missing (META_WA_TOKEN or META_WA_PHONE_ID)' };
+    if (!this.isConfigured()) {
+      return {
+        error: 'Meta WhatsApp credentials missing or using placeholder (META_WA_TOKEN or META_WA_PHONE_ID)',
+      };
     }
 
-    try {
-      const cleanPhone = message.toPhone.replace(/[^0-9]/g, '');
+    // 1. Normalize recipient phone number using Indian mobile number standard (+91)
+    const phoneRes = normalizeIndianPhoneNumber(message.toPhone);
+    if (!phoneRes.valid || !phoneRes.normalized) {
+      return {
+        error: phoneRes.error || `Invalid recipient phone number: '${message.toPhone}'`,
+      };
+    }
 
+    const recipient = phoneRes.normalized;
+
+    try {
       let bodyPayload: any;
 
-      if (message.buttons && message.buttons.length > 0) {
+      // 2. Official WhatsApp Business Platform Template Policy:
+      // Business-initiated notifications outside customer service window must use approved templates
+      if (message.template) {
         bodyPayload = {
           messaging_product: 'whatsapp',
           recipient_type: 'individual',
-          to: cleanPhone,
+          to: recipient,
+          type: 'template',
+          template: {
+            name: message.template.name,
+            language: message.template.language || { code: 'en' },
+            components: message.template.components || [],
+          },
+        };
+      } else if (message.buttons && message.buttons.length > 0) {
+        bodyPayload = {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: recipient,
           type: 'interactive',
           interactive: {
             type: 'button',
@@ -48,14 +84,14 @@ export class MetaCloudWhatsAppProvider implements WhatsAppProvider {
         bodyPayload = {
           messaging_product: 'whatsapp',
           recipient_type: 'individual',
-          to: cleanPhone,
+          to: recipient,
           type: 'text',
           text: { preview_url: true, body: message.text },
         };
       }
 
       const response = await fetch(
-        `https://graph.facebook.com/v19.0/${this.phoneId}/messages`,
+        `https://graph.facebook.com/${this.apiVersion}/${this.phoneId}/messages`,
         {
           method: 'POST',
           headers: {
@@ -73,7 +109,8 @@ export class MetaCloudWhatsAppProvider implements WhatsAppProvider {
         };
       }
 
-      return { id: data.messages?.[0]?.id };
+      const messageId = data.messages?.[0]?.id;
+      return { id: messageId, status: 'ACCEPTED' };
     } catch (err: any) {
       return { error: err.message || 'Network error communicating with Meta WhatsApp API' };
     }
@@ -128,6 +165,10 @@ export class ConsoleWhatsAppProvider implements WhatsAppProvider {
   private failNextCount = 0;
   private failError = 'Simulated WhatsApp provider network failure';
 
+  isConfigured(): boolean {
+    return true;
+  }
+
   async send(message: WhatsAppMessage): Promise<WhatsAppProviderResult> {
     if (this.failNextCount > 0) {
       this.failNextCount--;
@@ -142,7 +183,7 @@ export class ConsoleWhatsAppProvider implements WhatsAppProvider {
       );
     }
 
-    return { id: `mock-wa-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` };
+    return { id: `mock-wa-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, status: 'ACCEPTED' };
   }
 
   getSentMessages(): WhatsAppMessage[] {
@@ -153,10 +194,20 @@ export class ConsoleWhatsAppProvider implements WhatsAppProvider {
     this.sentMessages = [];
   }
 
-  setFailNext(count: number, errorMessage?: string): void {
-    this.failNextCount = count;
-    if (errorMessage) {
-      this.failError = errorMessage;
+  reset(): void {
+    this.sentMessages = [];
+    this.failNextCount = 0;
+  }
+
+  setFailNext(countOrError: number | string, errorMessage?: string): void {
+    if (typeof countOrError === 'string') {
+      this.failNextCount = 1;
+      this.failError = countOrError;
+    } else {
+      this.failNextCount = countOrError;
+      if (errorMessage) {
+        this.failError = errorMessage;
+      }
     }
   }
 }
@@ -169,7 +220,12 @@ export function getWhatsAppProvider(): WhatsAppProvider {
     return activeWhatsAppProvider;
   }
 
-  if (env.WHATSAPP_PROVIDER === 'meta' && env.META_WA_TOKEN && env.META_WA_PHONE_ID) {
+  if (
+    env.WHATSAPP_PROVIDER === 'meta' &&
+    env.META_WA_TOKEN &&
+    env.META_WA_PHONE_ID &&
+    !env.META_WA_TOKEN.includes('placeholder')
+  ) {
     return new MetaCloudWhatsAppProvider();
   }
 
@@ -186,4 +242,13 @@ export function setWhatsAppProvider(provider: WhatsAppProvider | null): void {
 
 export function getDefaultConsoleWhatsAppProvider(): ConsoleWhatsAppProvider {
   return defaultConsoleWhatsAppProvider;
+}
+
+export function isMetaWhatsAppConfigured(): boolean {
+  return Boolean(
+    env.META_WA_TOKEN &&
+    env.META_WA_PHONE_ID &&
+    !env.META_WA_TOKEN.includes('placeholder') &&
+    !env.META_WA_PHONE_ID.includes('placeholder')
+  );
 }

@@ -381,7 +381,7 @@ export const FacultyDecisionPage: React.FC = () => {
           <Button
             type="button"
             onClick={() => setConfirmAction('APPROVE')}
-            className="h-12 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-2 shadow-sm text-sm"
+            className="h-12 bg-emerald-700 hover:bg-emerald-800 text-white font-semibold gap-2 shadow-sm text-sm"
             data-testid="btn-faculty-approve"
           >
             <CheckCircle2 className="h-5 w-5" />
@@ -430,7 +430,7 @@ export const FacultyDecisionPage: React.FC = () => {
               disabled={decisionMutation.isPending}
               className={
                 confirmAction === 'APPROVE'
-                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  ? 'bg-emerald-700 hover:bg-emerald-800 text-white'
                   : 'bg-rose-600 hover:bg-rose-700 text-white'
               }
               data-testid="btn-confirm-decision"

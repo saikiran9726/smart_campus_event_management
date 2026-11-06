@@ -98,8 +98,8 @@ async function resolveUserByClerkId(clerkId: string): Promise<User | null> {
 export async function authenticateRequest(
   request: FastifyRequest
 ): Promise<User | null> {
-  // Test-only bypass: active ONLY in NODE_ENV === 'test'
-  if (env.NODE_ENV === 'test') {
+  // Test/Development header bypass: active in test and dev, never in production
+  if (env.NODE_ENV === 'test' || env.NODE_ENV === 'development') {
     const testUserId = request.headers['x-test-user-id'];
     if (typeof testUserId === 'string' && testUserId.trim().length > 0) {
       const cleanId = testUserId.trim();

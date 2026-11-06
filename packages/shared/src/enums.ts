@@ -113,6 +113,11 @@ export enum QuestionType {
   CHECKBOX = 'CHECKBOX',
   DATE = 'DATE',
   FILE_UPLOAD = 'FILE_UPLOAD',
+  DROPDOWN = 'DROPDOWN',
+  RADIO = 'RADIO',
+  URL = 'URL',
+  YES_NO = 'YES_NO',
+  INSTRUCTION = 'INSTRUCTION',
 }
 
 export const QUESTION_TYPES = [
@@ -126,6 +131,11 @@ export const QUESTION_TYPES = [
   QuestionType.CHECKBOX,
   QuestionType.DATE,
   QuestionType.FILE_UPLOAD,
+  QuestionType.DROPDOWN,
+  QuestionType.RADIO,
+  QuestionType.URL,
+  QuestionType.YES_NO,
+  QuestionType.INSTRUCTION,
 ] as const;
 
 export enum ScanMode {
@@ -169,11 +179,13 @@ export const CHANNEL_KINDS = [
 export enum NotificationChannel {
   EMAIL = 'EMAIL',
   WHATSAPP = 'WHATSAPP',
+  IN_APP = 'IN_APP',
 }
 
 export const NOTIFICATION_CHANNELS = [
   NotificationChannel.EMAIL,
   NotificationChannel.WHATSAPP,
+  NotificationChannel.IN_APP,
 ] as const;
 
 export enum NotificationKind {
@@ -183,6 +195,13 @@ export enum NotificationKind {
   WAITLIST_OFFER = 'WAITLIST_OFFER',
   FACULTY_APPROVAL = 'FACULTY_APPROVAL',
   STRIKE_NOTICE = 'STRIKE_NOTICE',
+  REGISTRATION_APPROVED = 'REGISTRATION_APPROVED',
+  REGISTRATION_REJECTED = 'REGISTRATION_REJECTED',
+  PAYMENT_SUCCESS = 'PAYMENT_SUCCESS',
+  PAYMENT_FAILED = 'PAYMENT_FAILED',
+  TEAM_INVITATION = 'TEAM_INVITATION',
+  REGISTRATION_CANCELLED = 'REGISTRATION_CANCELLED',
+  ORGANIZER_ALERT = 'ORGANIZER_ALERT',
 }
 
 export const NOTIFICATION_KINDS = [
@@ -192,6 +211,13 @@ export const NOTIFICATION_KINDS = [
   NotificationKind.WAITLIST_OFFER,
   NotificationKind.FACULTY_APPROVAL,
   NotificationKind.STRIKE_NOTICE,
+  NotificationKind.REGISTRATION_APPROVED,
+  NotificationKind.REGISTRATION_REJECTED,
+  NotificationKind.PAYMENT_SUCCESS,
+  NotificationKind.PAYMENT_FAILED,
+  NotificationKind.TEAM_INVITATION,
+  NotificationKind.REGISTRATION_CANCELLED,
+  NotificationKind.ORGANIZER_ALERT,
 ] as const;
 
 export enum TeamStatus {
@@ -206,4 +232,38 @@ export const TEAM_STATUSES = [
   TeamStatus.LOCKED,
   TeamStatus.SUBMITTED,
   TeamStatus.DISQUALIFIED,
+] as const;
+
+export enum RegistrationMode {
+  INDIVIDUAL = 'INDIVIDUAL',
+  TEAM = 'TEAM',
+  BOTH = 'BOTH',
+}
+
+export const REGISTRATION_MODES = [
+  RegistrationMode.INDIVIDUAL,
+  RegistrationMode.TEAM,
+  RegistrationMode.BOTH,
+] as const;
+
+export enum TeamPaymentPolicy {
+  PER_MEMBER = 'PER_MEMBER',
+  PER_TEAM = 'PER_TEAM',
+}
+
+export const TEAM_PAYMENT_POLICIES = [
+  TeamPaymentPolicy.PER_MEMBER,
+  TeamPaymentPolicy.PER_TEAM,
+] as const;
+
+export enum ApprovalStatus {
+  PENDING = 'PENDING',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+}
+
+export const APPROVAL_STATUSES = [
+  ApprovalStatus.PENDING,
+  ApprovalStatus.APPROVED,
+  ApprovalStatus.REJECTED,
 ] as const;

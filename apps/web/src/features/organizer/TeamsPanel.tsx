@@ -13,6 +13,10 @@ import {
   CheckCircle2,
   Medal,
   Sparkles,
+  Mail,
+  HelpCircle,
+  Clock,
+  UserCheck,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -23,13 +27,33 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from '@/components/ui/toast';
 
 interface TeamMember {
-  id: string;
+  id?: string;
   userId: string;
   role: string;
+  joinedAt?: string;
   fullName: string;
   email: string;
   rollNumber?: string;
   department?: string;
+  phone?: string;
+  registration?: {
+    id: string;
+    status: string;
+    paymentStatus: string;
+    amountPaise: number;
+    approvalStatus: string;
+    createdAt: string;
+  } | null;
+  answers?: Record<string, { label: string; type: string; value: any }>;
+}
+
+interface TeamInvitation {
+  id: string;
+  status: string;
+  invitedEmail?: string | null;
+  invitedRollNumber?: string | null;
+  createdAt: string;
+  expiresAt?: string | null;
 }
 
 interface TeamItem {
@@ -38,7 +62,21 @@ interface TeamItem {
   code: string;
   status: string;
   lockedAt?: string | null;
+  leaderId: string;
+  leader?: TeamMember | null;
+  isReady?: boolean;
+  minTeamSize?: number;
+  maxTeamSize?: number;
   members: TeamMember[];
+  invitations?: TeamInvitation[];
+  projectSubmission?: {
+    projectTitle: string;
+    abstract: string;
+    repoUrl: string;
+    demoUrl?: string | null;
+    deckKey?: string | null;
+    submittedAt?: string | null;
+  } | null;
   snapshot?: Array<{
     userId: string;
     fullName: string;
@@ -65,6 +103,13 @@ export const TeamsPanel: React.FC = () => {
 
   // Snapshot modal state
   const [selectedSnapshotTeam, setSelectedSnapshotTeam] = useState<TeamItem | null>(null);
+
+  // Form answers modal state
+  const [selectedMemberAnswers, setSelectedMemberAnswers] = useState<{
+    memberName: string;
+    teamName: string;
+    answers: Record<string, { label: string; type: string; value: any }>;
+  } | null>(null);
 
   // Winners selection state: ranks 1, 2, 3 teamIds
   const [rank1TeamId, setRank1TeamId] = useState<string>('');
@@ -274,47 +319,185 @@ export const TeamsPanel: React.FC = () => {
           ) : teams.length === 0 ? (
             <p className="text-xs text-muted-foreground italic">No teams registered yet.</p>
           ) : (
-            <div className="divide-y divide-border/60">
+            <div className="space-y-4">
               {teams.map((t) => (
-                <div key={t.id} className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className="font-bold text-sm">{t.name}</h4>
-                      <Badge variant="outline" className="font-mono text-[10px]">
-                        Code: {t.code}
-                      </Badge>
-                      {t.status === 'LOCKED' ? (
-                        <Badge className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-300 text-[10px] flex items-center gap-1">
-                          <Lock className="h-3 w-3" />
-                          Roster Locked
+                <div
+                  key={t.id}
+                  className="p-4 rounded-xl border border-border bg-card space-y-3 text-xs"
+                >
+                  {/* Team Top Header */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border/50 pb-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-bold text-base text-foreground">{t.name}</h4>
+                        <Badge variant="outline" className="font-mono text-[10px]">
+                          Code: {t.code}
                         </Badge>
-                      ) : (
-                        <Badge variant="secondary" className="text-[10px] flex items-center gap-1">
-                          <Unlock className="h-3 w-3" />
-                          Forming
+                        {t.status === 'LOCKED' ? (
+                          <Badge className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-300 text-[10px] flex items-center gap-1">
+                            <Lock className="h-3 w-3" />
+                            Roster Locked
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="text-[10px] flex items-center gap-1">
+                            <Unlock className="h-3 w-3" />
+                            Forming
+                          </Badge>
+                        )}
+                        <Badge
+                          variant={t.isReady ? 'default' : 'secondary'}
+                          className="text-[10px]"
+                        >
+                          {t.isReady ? 'Roster Ready' : 'Incomplete Roster'}
                         </Badge>
+                      </div>
+                      <p className="text-muted-foreground">
+                        Leader:{' '}
+                        <span className="font-semibold text-foreground">
+                          {t.leader?.fullName || 'Assigned'}
+                        </span>{' '}
+                        {t.leader?.email && (
+                          <span className="text-muted-foreground">({t.leader.email})</span>
+                        )}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {t.snapshot && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSelectedSnapshotTeam(t)}
+                          className="h-8 text-xs gap-1.5"
+                          data-testid={`btn-view-snapshot-${t.id}`}
+                        >
+                          <FileText className="h-3.5 w-3.5" />
+                          View Snapshot
+                        </Button>
                       )}
                     </div>
-                    <p className="text-muted-foreground">
-                      Members ({t.members.length}):{' '}
-                      {t.members.map((m) => `${m.fullName} (${m.role})`).join(', ')}
-                    </p>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    {t.snapshot && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setSelectedSnapshotTeam(t)}
-                        className="h-8 text-xs gap-1.5"
-                        data-testid={`btn-view-snapshot-${t.id}`}
-                      >
-                        <FileText className="h-3.5 w-3.5" />
-                        View Snapshot
-                      </Button>
-                    )}
+                  {/* Members Grid */}
+                  <div className="space-y-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                      Active Members ({t.members.length})
+                    </span>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {t.members.map((m) => (
+                        <div
+                          key={m.userId}
+                          className="p-2.5 rounded-lg border border-border/80 bg-muted/10 flex items-center justify-between"
+                        >
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-semibold text-foreground">{m.fullName}</span>
+                              <Badge
+                                variant={m.role === 'LEADER' ? 'default' : 'secondary'}
+                                className="text-[9px]"
+                              >
+                                {m.role}
+                              </Badge>
+                              {m.registration?.status && (
+                                <Badge variant="outline" className="text-[9px]">
+                                  {m.registration.status}
+                                </Badge>
+                              )}
+                              {m.registration?.paymentStatus && (
+                                <Badge
+                                  variant="secondary"
+                                  className="text-[9px]"
+                                >
+                                  Pay: {m.registration.paymentStatus}
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-muted-foreground">
+                              {m.email} {m.rollNumber ? `• ${m.rollNumber}` : ''}{' '}
+                              {m.department ? `• ${m.department}` : ''}
+                            </p>
+                          </div>
+
+                          {m.answers && Object.keys(m.answers).length > 0 && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 px-2 text-[11px] text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 gap-1"
+                              onClick={() =>
+                                setSelectedMemberAnswers({
+                                  memberName: m.fullName,
+                                  teamName: t.name,
+                                  answers: m.answers!,
+                                })
+                              }
+                            >
+                              <FileText className="h-3.5 w-3.5" />
+                              <span>Answers</span>
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
+
+                  {/* Teammate Invitations Status */}
+                  {t.invitations && t.invitations.length > 0 && (
+                    <div className="pt-2 border-t border-border/40 space-y-1.5">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                        Teammate Invitations ({t.invitations.length})
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        {t.invitations.map((inv) => (
+                          <div
+                            key={inv.id}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-muted/20 border border-border text-[11px]"
+                          >
+                            <Mail className="h-3 w-3 text-muted-foreground" />
+                            <span className="font-medium text-foreground">
+                              {inv.invitedEmail || inv.invitedRollNumber}
+                            </span>
+                            <Badge
+                              variant={
+                                inv.status === 'ACCEPTED'
+                                  ? 'default'
+                                  : inv.status === 'PENDING'
+                                  ? 'outline'
+                                  : 'secondary'
+                              }
+                              className="text-[9px] uppercase"
+                            >
+                              {inv.status}
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Project Submission Preview */}
+                  {t.projectSubmission && (
+                    <div className="p-3 rounded-lg border border-indigo-200 dark:border-indigo-900 bg-indigo-50/20 dark:bg-indigo-950/20 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-foreground">
+                          Project: {t.projectSubmission.projectTitle}
+                        </span>
+                        {t.projectSubmission.repoUrl && (
+                          <a
+                            href={t.projectSubmission.repoUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline flex items-center gap-1 text-[11px]"
+                          >
+                            <Code2 className="h-3 w-3" />
+                            Repository
+                          </a>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground line-clamp-2">
+                        {t.projectSubmission.abstract}
+                      </p>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -377,6 +560,42 @@ export const TeamsPanel: React.FC = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Form Answers Viewer Modal */}
+      <Dialog
+        open={!!selectedMemberAnswers}
+        onOpenChange={() => setSelectedMemberAnswers(null)}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-4 w-4 text-indigo-600" />
+              Registration Form Answers
+            </DialogTitle>
+            <p className="text-xs text-muted-foreground">
+              Attendee: {selectedMemberAnswers?.memberName} (Team: {selectedMemberAnswers?.teamName})
+            </p>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2 text-xs max-h-[60vh] overflow-y-auto">
+            {selectedMemberAnswers &&
+              Object.entries(selectedMemberAnswers.answers).map(([key, item]) => (
+                <div key={key} className="p-2.5 rounded-lg border border-border bg-muted/10 space-y-1">
+                  <span className="font-semibold text-foreground text-[11px] block">{item.label}</span>
+                  <p className="text-muted-foreground font-mono">
+                    {typeof item.value === 'object' ? JSON.stringify(item.value) : String(item.value)}
+                  </p>
+                </div>
+              ))}
+          </div>
+
+          <DialogFooter>
+            <Button size="sm" onClick={() => setSelectedMemberAnswers(null)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Roster Snapshot Viewer Modal */}
       <Dialog

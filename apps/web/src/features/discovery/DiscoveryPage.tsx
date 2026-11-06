@@ -1,11 +1,19 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { Link, useNavigate } from 'react-router-dom';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { EventCard, EventCardData } from './EventCard';
-import { SkeletonCard } from '@/components/primitives/skeleton-card';
-import { EmptyState } from '@/components/primitives/empty-state';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
+import {
+  Button,
+  Input,
+  Card,
+  Badge,
+  StatusPill,
+  EmptyState,
+  ErrorState,
+  Skeleton,
+} from '@/components/shared';
 import {
   Sheet,
   SheetContent,
@@ -13,8 +21,20 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
-import { Search, SlidersHorizontal, Sparkles, RotateCcw, Calendar } from 'lucide-react';
+import {
+  Search,
+  SlidersHorizontal,
+  Sparkles,
+  RotateCcw,
+  Calendar,
+  Users,
+  Ticket,
+  ArrowRight,
+  Clock,
+  CheckCircle2,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { formatTeamCode } from '@eventora/shared';
 
 export const CATEGORIES = [
   'All',
@@ -34,6 +54,8 @@ export const DATE_FILTERS = [
 ] as const;
 
 export const DiscoveryPage: React.FC = () => {
+  const { user, isSignedIn } = useAuth();
+  const navigate = useNavigate();
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
@@ -61,6 +83,34 @@ export const DiscoveryPage: React.FC = () => {
     selectedCategory !== 'All' ||
     selectedDateFilter !== 'all';
 
+  // Fetch pending invitations for next-step cards
+  const { data: invitationsData } = useQuery({
+    queryKey: ['me', 'invitations', 'dashboard'],
+    queryFn: async () => {
+      try {
+        const res = await api.get<{ invitations: any[] }>('/me/team-invitations', { showToast: false });
+        return res?.invitations || [];
+      } catch {
+        return [];
+      }
+    },
+    enabled: Boolean(isSignedIn),
+  });
+
+  // Fetch student active teams
+  const { data: myTeamsData } = useQuery({
+    queryKey: ['me', 'teams', 'dashboard'],
+    queryFn: async () => {
+      try {
+        const res = await api.get<{ teams: any[] }>('/me/teams', { showToast: false });
+        return res?.teams || [];
+      } catch {
+        return [];
+      }
+    },
+    enabled: Boolean(isSignedIn),
+  });
+
   // Keyset cursor infinite query
   const {
     data,
@@ -83,11 +133,31 @@ export const DiscoveryPage: React.FC = () => {
       params.set('limit', '9');
 
       const res = await api.get<{
-        events?: EventCardData[];
-        items?: EventCardData[];
+        items?: any[];
+        events?: any[];
         nextCursor?: string | null;
       }>(`/events?${params.toString()}`, { showToast: false });
-      const list = res.events || res.items || [];
+
+      const rawList = res.items || res.events || [];
+      const list: EventCardData[] = rawList.map((item: any) => ({
+        id: item.id,
+        slug: item.slug,
+        title: item.title,
+        description: item.description,
+        category: item.category,
+        bannerUrl: item.bannerUrl ?? item.posterUrl ?? item.coverImageUrl ?? null,
+        startAt: item.startAt,
+        endAt: item.endAt,
+        venue: item.venue ?? item.venueName ?? null,
+        pricePaise: item.pricePaise,
+        capacity: item.capacity,
+        seatsRemaining: item.seatsRemaining ?? item.remainingCapacity ?? 0,
+        clubName: item.clubName,
+        registrationMode: item.registrationMode,
+        minTeamSize: item.minTeamSize,
+        maxTeamSize: item.maxTeamSize,
+        isCompetition: item.isCompetition,
+      }));
       return {
         events: list,
         nextCursor: res.nextCursor || null,
@@ -100,38 +170,139 @@ export const DiscoveryPage: React.FC = () => {
     return data?.pages.flatMap((page) => page.events) || [];
   }, [data]);
 
+  const pendingInvitations = (invitationsData || []).filter((inv: any) => inv.status === 'PENDING');
+  const activeTeams = myTeamsData || [];
+
   return (
-    <div className="container max-w-7xl px-4 sm:px-8 py-8 space-y-8 mx-auto">
-      {/* 1. Hero Search Section */}
-      <div className="flex flex-col gap-6">
-        <div className="space-y-2">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-xs font-semibold">
-            <Sparkles className="h-3.5 w-3.5" />
-            <span>Campus Event Feed</span>
+    <div className="max-w-content mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-10 text-left">
+      {/* 1. Greeting Hero Section */}
+      <section className="p-6 sm:p-8 rounded-md border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 shadow-sm space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <Badge variant="primary" size="sm" leftDot>Campus Portal</Badge>
+              {isSignedIn && (
+                <span className="text-xs text-stone-500 font-medium">Logged in as {user?.role || 'Student'}</span>
+              )}
+            </div>
+            <h1 className="font-heading text-2xl sm:text-4xl font-extrabold text-stone-900 dark:text-stone-100 tracking-tight">
+              {isSignedIn
+                ? `Welcome back, ${user?.fullName ? user.fullName.split(' ')[0] : 'Campus Member'}!`
+                : 'Discover Campus Events & Hackathons'}
+            </h1>
+            <p className="text-xs sm:text-sm text-stone-600 dark:text-stone-400 max-w-2xl leading-relaxed">
+              Explore university hackathons, register individually or collaborate in teams, and track digital QR passes.
+            </p>
           </div>
-          <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight">
-            Discover Campus Life
-          </h1>
-          <p className="text-muted-foreground text-sm sm:text-base max-w-2xl">
-            Live tickets, instant gate passes, academic OD letters, and hackathon teams.
-          </p>
+
+          <div className="flex items-center gap-2.5 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate('/teams/join')}
+              leftIcon={<Users className="h-4 w-4 text-teal-700 stroke-[1.75]" />}
+            >
+              Join with Code
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => navigate('/passport')}
+              leftIcon={<Ticket className="h-4 w-4 stroke-[1.75]" />}
+            >
+              My Passport
+            </Button>
+          </div>
         </div>
 
-        {/* Search input + Mobile Filter Trigger */}
-        <div className="flex items-center gap-3">
-          <div className="relative flex-1 max-w-2xl">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
+        {/* 2. Next-step Cards (Pending Invitations & Active Teams) */}
+        {isSignedIn && (pendingInvitations.length > 0 || activeTeams.length > 0) && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-3 border-t border-stone-100 dark:border-stone-800">
+            {/* Pending Team Invitations */}
+            {pendingInvitations.length > 0 && (
+              <div className="p-4 rounded-md border border-amber-200 bg-amber-50/60 dark:border-amber-800 dark:bg-amber-950/20 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="h-8 w-8 rounded-full bg-amber-200 text-amber-800 flex items-center justify-center shrink-0">
+                    <Users className="h-4 w-4 stroke-[2]" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-amber-900 dark:text-amber-200 truncate">
+                      {pendingInvitations.length} Pending Team Invitation{pendingInvitations.length > 1 ? 's' : ''}
+                    </p>
+                    <p className="text-[11px] text-amber-700 dark:text-amber-400 truncate">
+                      From team &quot;{pendingInvitations[0].teamName}&quot;
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  className="bg-amber-600 hover:bg-amber-700 text-white shrink-0 text-xs h-8"
+                  onClick={() => navigate('/teams/join')}
+                >
+                  Review
+                </Button>
+              </div>
+            )}
+
+            {/* Active Teams */}
+            {activeTeams.length > 0 && (
+              <div className="p-4 rounded-md border border-teal-200 bg-teal-50/40 dark:border-teal-800 dark:bg-teal-950/20 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="h-8 w-8 rounded-full bg-teal-100 text-teal-800 flex items-center justify-center shrink-0">
+                    <CheckCircle2 className="h-4 w-4 stroke-[2]" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-teal-900 dark:text-teal-200 truncate">
+                      {activeTeams[0].name}
+                    </p>
+                    <p className="text-[11px] text-teal-700 dark:text-teal-400 font-mono tnum">
+                      Code: {formatTeamCode(activeTeams[0].inviteCode)}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 text-xs h-8"
+                  onClick={() => navigate('/passport')}
+                >
+                  View Team
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+
+      {/* 3. Search & Filter Bar */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="font-heading text-xl font-bold text-stone-900 dark:text-stone-100">
+              Upcoming Events
+            </h2>
+            <p className="text-xs text-stone-500">Live listings with real-time seat tracking</p>
+          </div>
+          {hasActiveFilters && (
+            <Button variant="ghost" size="sm" onClick={resetFilters} leftIcon={<RotateCcw className="h-3.5 w-3.5" />}>
+              Clear All Filters
+            </Button>
+          )}
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400 stroke-[1.75]" />
+            <input
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Search hackathons, workshops, cultural fests..."
-              className="pl-10 h-12 text-base rounded-xl border-border/80 shadow-sm focus-visible:ring-4 focus-visible:ring-indigo-500/20"
+              placeholder="Search hackathons, workshops, fests..."
+              className="w-full h-11 pl-10 pr-4 rounded-md border border-stone-300 bg-white text-sm text-stone-800 placeholder:text-stone-400 focus-ring dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100 transition-colors"
               aria-label="Search campus events"
             />
             {searchInput && (
               <button
                 onClick={() => setSearchInput('')}
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground hover:text-foreground p-1"
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-stone-500 hover:text-stone-800 p-1"
                 aria-label="Clear search"
               >
                 Clear
@@ -139,31 +310,42 @@ export const DiscoveryPage: React.FC = () => {
             )}
           </div>
 
+          {/* Desktop Categories Filter Tabs */}
+          <div className="hidden lg:flex items-center gap-1.5 overflow-x-auto">
+            {CATEGORIES.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setSelectedCategory(cat)}
+                className={cn(
+                  'px-3 py-2 rounded-md text-xs font-semibold border transition-colors whitespace-nowrap focus-ring',
+                  selectedCategory === cat
+                    ? 'bg-teal-700 text-white border-teal-700 dark:bg-teal-600'
+                    : 'bg-white text-stone-700 border-stone-200 hover:bg-stone-100 dark:bg-stone-900 dark:text-stone-300 dark:border-stone-700'
+                )}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
           {/* Mobile Filter Sheet Trigger */}
           <Sheet open={isFilterSheetOpen} onOpenChange={setIsFilterSheetOpen}>
             <SheetTrigger asChild>
               <Button
                 variant="outline"
-                className="sm:hidden h-12 px-4 rounded-xl flex items-center gap-2 border-border shadow-sm shrink-0"
-                aria-label="Open filter options"
+                className="lg:hidden h-11 px-4 flex items-center gap-2 shrink-0 font-semibold text-xs"
               >
-                <SlidersHorizontal className="h-4 w-4" />
-                <span>Filters</span>
-                {hasActiveFilters && (
-                  <span className="h-2 w-2 rounded-full bg-primary" />
-                )}
+                <SlidersHorizontal className="h-4 w-4 stroke-[1.75]" />
+                <span>Filters {hasActiveFilters && '•'}</span>
               </Button>
             </SheetTrigger>
-            <SheetContent side="bottom" className="rounded-t-2xl max-h-[85vh] p-6 space-y-6">
+            <SheetContent side="bottom" className="rounded-t-lg max-h-[85vh] p-6 space-y-6">
               <SheetHeader>
-                <SheetTitle className="text-left text-lg font-bold">Filter Events</SheetTitle>
+                <SheetTitle className="text-left font-heading text-lg font-bold">Filter Events</SheetTitle>
               </SheetHeader>
-
-              <div className="space-y-4">
+              <div className="space-y-4 text-left">
                 <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">
-                    Category
-                  </label>
+                  <p className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-2">Category</p>
                   <div className="flex flex-wrap gap-2">
                     {CATEGORIES.map((cat) => (
                       <button
@@ -172,8 +354,8 @@ export const DiscoveryPage: React.FC = () => {
                         className={cn(
                           'px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-colors',
                           selectedCategory === cat
-                            ? 'bg-primary text-primary-foreground border-primary'
-                            : 'bg-muted/50 text-foreground border-border'
+                            ? 'bg-teal-700 text-white border-teal-700'
+                            : 'bg-stone-100 text-stone-700 border-stone-200'
                         )}
                       >
                         {cat}
@@ -183,144 +365,78 @@ export const DiscoveryPage: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">
-                    Date Window
-                  </label>
+                  <p className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-2">Date</p>
                   <div className="flex flex-wrap gap-2">
-                    {DATE_FILTERS.map((df) => (
+                    {DATE_FILTERS.map((d) => (
                       <button
-                        key={df.value}
-                        onClick={() => setSelectedDateFilter(df.value)}
+                        key={d.value}
+                        onClick={() => setSelectedDateFilter(d.value)}
                         className={cn(
                           'px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-colors',
-                          selectedDateFilter === df.value
-                            ? 'bg-primary text-primary-foreground border-primary'
-                            : 'bg-muted/50 text-foreground border-border'
+                          selectedDateFilter === d.value
+                            ? 'bg-teal-700 text-white border-teal-700'
+                            : 'bg-stone-100 text-stone-700 border-stone-200'
                         )}
                       >
-                        {df.label}
+                        {d.label}
                       </button>
                     ))}
                   </div>
                 </div>
               </div>
-
-              <div className="flex gap-3 pt-4 border-t border-border">
-                <Button variant="outline" className="flex-1 h-12" onClick={resetFilters}>
-                  Reset All
-                </Button>
-                <Button className="flex-1 h-12" onClick={() => setIsFilterSheetOpen(false)}>
-                  Apply Filters
-                </Button>
-              </div>
             </SheetContent>
           </Sheet>
         </div>
+      </section>
 
-        {/* Desktop Category Chips & Date Filter Buttons */}
-        <div className="hidden sm:flex flex-wrap items-center justify-between gap-4 pb-2 border-b border-border/40">
-          {/* Category Chips */}
-          <div className="flex flex-wrap items-center gap-2" role="radiogroup" aria-label="Event categories">
-            {CATEGORIES.map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                className={cn(
-                  'px-4 py-1.5 rounded-full text-xs font-semibold border transition-all cursor-pointer focus-ring',
-                  selectedCategory === cat
-                    ? 'bg-primary text-primary-foreground border-primary shadow-sm'
-                    : 'bg-background hover:bg-muted text-muted-foreground hover:text-foreground border-border'
-                )}
-              >
-                {cat}
-              </button>
-            ))}
+      {/* 4. Event Cards Grid */}
+      <section>
+        {isLoading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <Skeleton variant="card" className="h-[380px]" />
+            <Skeleton variant="card" className="h-[380px]" />
+            <Skeleton variant="card" className="h-[380px]" />
           </div>
-
-          {/* Date Filters */}
-          <div className="flex items-center gap-1.5">
-            <Calendar className="h-4 w-4 text-muted-foreground mr-1" />
-            {DATE_FILTERS.map((df) => (
-              <button
-                key={df.value}
-                onClick={() => setSelectedDateFilter(df.value)}
-                className={cn(
-                  'px-2.5 py-1 rounded-md text-xs font-medium transition-colors focus-ring',
-                  selectedDateFilter === df.value
-                    ? 'bg-muted font-bold text-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                {df.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* 2. Events Grid */}
-      {isLoading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6" data-testid="discovery-loading-skeletons">
-          <SkeletonCard />
-          <SkeletonCard />
-          <SkeletonCard />
-          <SkeletonCard />
-          <SkeletonCard />
-          <SkeletonCard />
-        </div>
-      ) : isError ? (
-        <div className="p-8 rounded-xl border border-destructive/20 bg-destructive/10 text-center space-y-3">
-          <p className="text-sm font-semibold text-destructive">
-            Failed to load campus events: {(error as any)?.message || 'Network error'}
-          </p>
-          <Button variant="outline" onClick={() => refetch()} className="gap-2">
-            <RotateCcw className="h-4 w-4" />
-            <span>Retry</span>
-          </Button>
-        </div>
-      ) : allEvents.length === 0 ? (
-        <EmptyState
-          title="No Campus Events Found"
-          description="We couldn't find any events matching your current filter criteria or search keyword."
-          action={
-            <Button
-              onClick={resetFilters}
-              variant="outline"
-              className="inline-flex items-center gap-2 h-11 px-6 shadow-sm"
-            >
-              <RotateCcw className="h-4 w-4" />
-              <span>Reset Filters</span>
-            </Button>
-          }
-        />
-      ) : (
-        <div className="space-y-8">
-          <div
-            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"
-            data-testid="discovery-events-grid"
-          >
-            {allEvents.map((event) => (
-              <EventCard key={event.id} event={event} />
-            ))}
-          </div>
-
-          {/* Keyset Cursor Infinite Scroll Trigger */}
-          {hasNextPage && (
-            <div className="flex justify-center pt-4">
-              <Button
-                variant="outline"
-                onClick={() => fetchNextPage()}
-                disabled={isFetchingNextPage}
-                className="h-12 px-8 font-semibold min-h-12"
-              >
-                {isFetchingNextPage ? 'Loading more events...' : 'Load More Events'}
-              </Button>
+        ) : isError ? (
+          <ErrorState
+            title="Failed to Load Events"
+            message={(error as Error)?.message || 'Unable to load events from the campus server.'}
+            onRetry={() => refetch()}
+          />
+        ) : allEvents.length === 0 ? (
+          <EmptyState
+            title="No Campus Events Found"
+            description={
+              hasActiveFilters
+                ? 'No campus events matched your current search and filter criteria.'
+                : 'There are currently no upcoming events published on campus.'
+            }
+            actionLabel={hasActiveFilters ? 'Reset Filters' : undefined}
+            onAction={hasActiveFilters ? resetFilters : undefined}
+          />
+        ) : (
+          <div className="space-y-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6" data-testid="events-grid">
+              {allEvents.map((event) => (
+                <EventCard key={event.id} event={event} />
+              ))}
             </div>
-          )}
-        </div>
-      )}
+
+            {hasNextPage && (
+              <div className="text-center pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => fetchNextPage()}
+                  isLoading={isFetchingNextPage}
+                >
+                  Load More Events
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
     </div>
   );
 };
-
 export default DiscoveryPage;

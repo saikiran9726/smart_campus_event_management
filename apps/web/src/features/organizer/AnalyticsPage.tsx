@@ -90,7 +90,7 @@ interface AnalyticsData {
   }>;
 }
 
-const DONUT_COLORS = ['#10B981', '#F43F5E', '#F59E0B']; // Green, Red, Yellow
+const DONUT_COLORS = ['#0f766e', '#dc2626', '#d97706']; // Green, Red, Yellow
 
 export const AnalyticsPage: React.FC = () => {
   const { eventId } = useParams<{ eventId?: string }>();
@@ -281,7 +281,7 @@ export const AnalyticsPage: React.FC = () => {
           </Button>
           <div>
             <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-2.5">
-              <BarChart3 className="h-7 w-7 text-indigo-600" />
+              <BarChart3 className="h-7 w-7 text-teal-600" />
               Post-Mortem Analytics & NAAC Audit
             </h1>
             <p className="text-sm text-muted-foreground">
@@ -310,7 +310,7 @@ export const AnalyticsPage: React.FC = () => {
           <Button
             onClick={handleExportNaac}
             disabled={isExporting}
-            className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm h-9 text-xs"
+            className="gap-2 bg-teal-600 hover:bg-indigo-700 text-white shadow-sm h-9 text-xs"
             data-testid="btn-naac-export"
           >
             <Download className="h-3.5 w-3.5" />
@@ -344,7 +344,7 @@ export const AnalyticsPage: React.FC = () => {
         <Card className="border-border p-5 space-y-1">
           <div className="flex items-center justify-between text-muted-foreground">
             <span className="text-xs font-semibold uppercase tracking-wider">Arrivals</span>
-            <Users className="h-4 w-4 text-indigo-500" />
+            <Users className="h-4 w-4 text-teal-600" />
           </div>
           <p className="text-3xl font-extrabold tracking-tight tnum">
             {analytics.funnel.checkedIn}
@@ -388,7 +388,7 @@ export const AnalyticsPage: React.FC = () => {
                 <XAxis dataKey="stage" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip />
-                <Bar dataKey="count" fill="#4338CA" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="count" fill="#0f766e" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -408,7 +408,7 @@ export const AnalyticsPage: React.FC = () => {
                 <XAxis dataKey="bucket" tick={{ fontSize: 10 }} />
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip />
-                <Line type="monotone" dataKey="count" stroke="#6366F1" strokeWidth={2.5} dot={{ r: 4 }} />
+                <Line type="monotone" dataKey="count" stroke="#0d9488" strokeWidth={2.5} dot={{ r: 4 }} />
               </LineChart>
             </ResponsiveContainer>
           </CardContent>
@@ -477,7 +477,7 @@ export const AnalyticsPage: React.FC = () => {
                   <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
                     <div
                       style={{ width: `${d.isSuppressed ? 8 : (d.count / 100) * 100}%` }}
-                      className={`h-full rounded-full ${d.isSuppressed ? 'bg-amber-400/60' : 'bg-indigo-600'}`}
+                      className={`h-full rounded-full ${d.isSuppressed ? 'bg-amber-400/60' : 'bg-teal-600'}`}
                     />
                   </div>
                 </div>
@@ -500,8 +500,8 @@ export const AnalyticsPage: React.FC = () => {
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip />
                 <Legend />
-                <Bar dataKey="registered" fill="#818CF8" name="Registered" radius={[3, 3, 0, 0]} />
-                <Bar dataKey="checkedIn" fill="#4338CA" name="Checked In" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="registered" fill="#a8a29e" name="Registered" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="checkedIn" fill="#0f766e" name="Checked In" radius={[3, 3, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>

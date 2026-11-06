@@ -2,19 +2,24 @@ import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { AppError } from '../../lib/app-error';
 import { requireAuth } from '../../plugins/auth';
-import { getUserTeamForEvent } from '../teams/service';
-import { listSubmissionsForEvent, submitProject } from './service';
+import {
+  getSubmissionForEventAndUser,
+  listSubmissionsForEvent,
+  submitProject,
+  submitProjectOrDeliverables,
+} from './service';
 
 const submitProjectBodySchema = z.object({
-  projectTitle: z.string().min(1).max(200),
-  abstract: z.string().min(1).max(2000),
-  repoUrl: z.string().url(),
-  demoUrl: z.string().url().optional(),
-  deckKey: z.string().optional(),
+  projectTitle: z.string().max(200).optional().nullable(),
+  abstract: z.string().max(2000).optional().nullable(),
+  repoUrl: z.string().optional().nullable(),
+  demoUrl: z.string().optional().nullable(),
+  deckKey: z.string().optional().nullable(),
+  customFields: z.record(z.unknown()).optional().default({}),
 });
 
 export async function submissionRoutes(server: FastifyInstance): Promise<void> {
-  // 1. Submit project deliverables
+  // 1. Submit project deliverables for a specific team (backward compatibility)
   server.post(
     '/teams/:id/submission',
     { preHandler: [requireAuth] },
@@ -25,8 +30,9 @@ export async function submissionRoutes(server: FastifyInstance): Promise<void> {
       if (!parsed.success) {
         throw new AppError(
           'VALIDATION_FAILED',
-          'Invalid submission parameters. Verify projectTitle, abstract (<= 2000 chars), and repoUrl.',
-          400
+          'Invalid submission parameters.',
+          400,
+          parsed.error.format()
         );
       }
 
@@ -35,7 +41,7 @@ export async function submissionRoutes(server: FastifyInstance): Promise<void> {
     }
   );
 
-  // 1.5. Submit project deliverables (event-scoped alias)
+  // 2. Submit project deliverables for an event (handles both individual & team submissions)
   server.post(
     '/events/:eventId/submissions',
     { preHandler: [requireAuth] },
@@ -46,22 +52,29 @@ export async function submissionRoutes(server: FastifyInstance): Promise<void> {
       if (!parsed.success) {
         throw new AppError(
           'VALIDATION_FAILED',
-          'Invalid submission parameters. Verify projectTitle, abstract (<= 2000 chars), and repoUrl.',
-          400
+          'Invalid submission parameters.',
+          400,
+          parsed.error.format()
         );
       }
 
-      const team = await getUserTeamForEvent(request.user!.id, eventId);
-      if (!team) {
-        throw new AppError('NOT_FOUND', 'No active team found for this event.', 404);
-      }
-
-      const updatedTeam = await submitProject(request.user!.id, team.id, parsed.data);
-      return reply.status(200).send({ success: true, team: updatedTeam });
+      const result = await submitProjectOrDeliverables(request.user!.id, eventId, parsed.data);
+      return reply.status(200).send({ success: true, submission: result });
     }
   );
 
-  // 2. List submissions for an event (organizer/judges)
+  // 3. Get current user's / team's submission status and event configuration
+  server.get(
+    '/events/:eventId/submissions/me',
+    { preHandler: [requireAuth] },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { eventId } = request.params as { eventId: string };
+      const data = await getSubmissionForEventAndUser(request.user!.id, eventId);
+      return reply.status(200).send(data);
+    }
+  );
+
+  // 4. List submissions for an event (organizer/judges)
   server.get(
     '/events/:eventId/submissions',
     { preHandler: [requireAuth] },

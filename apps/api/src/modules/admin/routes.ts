@@ -1,5 +1,5 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { and, count, desc, eq, ilike, isNull, ne, or, sql } from 'drizzle-orm';
+import { SQL, and, count, desc, eq, ilike, isNull, ne, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { UserRole } from '@eventora/shared';
 import { db } from '../../db/client';
@@ -7,6 +7,8 @@ import { auditLogs, clubMembers, clubs, events, users } from '../../db/schema';
 import { AppError } from '../../lib/app-error';
 import { requireRole } from '../../middleware/rbac';
 import { requireAuth } from '../../plugins/auth';
+
+const SYSTEM_BOT_USER_ID = '00000000-0000-0000-0000-000000000000';
 
 const userListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -49,7 +51,8 @@ export async function adminRoutes(server: FastifyInstance): Promise<void> {
       const { page, limit, q, role } = request.query as z.infer<typeof userListQuerySchema>;
       const offset = (page - 1) * limit;
 
-      const conditions = [];
+      // Exclude internal automated system bot identity from human user directory
+      const conditions: SQL[] = [ne(users.id, SYSTEM_BOT_USER_ID)];
 
       if (role) {
         conditions.push(eq(users.role, role));
@@ -57,13 +60,14 @@ export async function adminRoutes(server: FastifyInstance): Promise<void> {
 
       if (q && q.length > 0) {
         const pattern = `%${q}%`;
-        conditions.push(
-          or(
-            ilike(users.fullName, pattern),
-            ilike(users.email, pattern),
-            ilike(users.rollNumber, pattern)
-          )
+        const searchCondition = or(
+          ilike(users.fullName, pattern),
+          ilike(users.email, pattern),
+          ilike(users.rollNumber, pattern)
         );
+        if (searchCondition) {
+          conditions.push(searchCondition);
+        }
       }
 
       const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
@@ -122,6 +126,10 @@ export async function adminRoutes(server: FastifyInstance): Promise<void> {
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { id } = request.params as { id: string };
       const { role: newRole } = request.body as z.infer<typeof updateRoleBodySchema>;
+
+      if (id === SYSTEM_BOT_USER_ID) {
+        throw new AppError('FORBIDDEN', 'Internal system bot account role cannot be modified.', 403);
+      }
 
       const [targetUser] = await db
         .select()

@@ -1,10 +1,14 @@
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, or, sql } from 'drizzle-orm';
 import {
   ClubMemberRole,
   EventStatus,
+  formatTeamCode,
   generateTeamCode,
+  generateTeamInviteToken,
+  normalizeTeamCode,
   NotificationChannel,
   NotificationKind,
+  PaymentStatus,
   RegistrationStatus,
   TeamStatus,
   UserRole,
@@ -28,6 +32,7 @@ import { assertNotInCooldown } from '../../middleware/rbac';
 import { getIO } from '../../realtime/io';
 import { issueTicket } from '../tickets/service';
 import { releaseSeat } from '../waitlist/service';
+import { submitAnswers } from '../forms/service';
 
 /**
  * Creates a new competition team and atomically reserves the leader's seat.
@@ -68,8 +73,14 @@ export async function createTeam(
       throw new AppError('NOT_FOUND', `Event '${eventId}' not found.`, 404);
     }
 
-    if (!event.isCompetition) {
-      throw new AppError('VALIDATION_FAILED', 'Event is not a competition; team formation is not permitted.', 400);
+    const allowsTeams =
+      event.registrationMode === 'TEAM' ||
+      event.registrationMode === 'BOTH' ||
+      Boolean(event.isCompetition) ||
+      Boolean(event.minTeamSize && event.minTeamSize > 1);
+
+    if (!allowsTeams) {
+      throw new AppError('VALIDATION_FAILED', 'Team formation is not permitted for this event.', 400);
     }
 
     if (event.status !== EventStatus.PUBLISHED && event.status !== EventStatus.LIVE) {
@@ -134,12 +145,20 @@ export async function createTeam(
         throw new AppError('CONFLICT', 'Event is at full capacity. Cannot form a new team.', 409);
       }
 
+      const isPaid = Boolean(event.isPaid && event.pricePaise > 0);
+      const paymentStatus = isPaid ? PaymentStatus.PENDING : PaymentStatus.NOT_REQUIRED;
+      const amountPaise = isPaid ? event.pricePaise : 0;
+
       const [newReg] = await tx
         .insert(registrations)
         .values({
           eventId,
           userId,
           status: RegistrationStatus.CONFIRMED,
+          paymentStatus,
+          amountPaise,
+          formVersion: event.formVersion ?? 1,
+          approvalStatus: event.approvalRequired ? 'PENDING' : 'APPROVED',
         })
         .returning();
 
@@ -148,17 +167,30 @@ export async function createTeam(
       }
 
       leaderReg = newReg;
-      await issueTicket(tx, leaderReg);
+      if (!isPaid) {
+        await issueTicket(tx, leaderReg);
+      }
     }
 
-    // 5. Generate invite code with collision retry (up to 5 times)
+    // If registration form answers were provided, record them
+    if (_answers && Object.keys(_answers).length > 0) {
+      await submitAnswers(tx, {
+        registrationId: leaderReg.id,
+        eventId,
+        answers: _answers,
+      });
+    }
+
+    // 5. Generate human-friendly 8-char CSPRNG join code and invitation token with collision retry
     let inviteCode = '';
+    let inviteToken = '';
     let createdTeam: any = null;
     let attempts = 0;
 
     while (attempts < 5) {
       try {
-        inviteCode = generateTeamCode();
+        inviteCode = generateTeamCode(8);
+        inviteToken = generateTeamInviteToken();
         const [inserted] = await tx
           .insert(teams)
           .values({
@@ -166,6 +198,8 @@ export async function createTeam(
             name: trimmedName,
             leaderId: userId,
             inviteCode,
+            inviteToken,
+            codeStatus: 'ACTIVE',
             status: TeamStatus.FORMING,
           })
           .returning();
@@ -205,10 +239,18 @@ export async function createTeam(
       .delete(teammatePool)
       .where(and(eq(teammatePool.eventId, eventId), eq(teammatePool.userId, userId)));
 
+    const formattedCode = formatTeamCode(inviteCode);
+
     return {
-      team: createdTeam,
+      team: {
+        ...createdTeam,
+        formattedCode,
+      },
       inviteCode,
-      display: `TEAM-${inviteCode}`,
+      formattedCode,
+      inviteToken,
+      display: formattedCode,
+      registration: leaderReg,
     };
   });
 }
@@ -217,9 +259,13 @@ export async function createTeam(
  * Joins an existing team using a case-insensitive code (with or without 'TEAM-' prefix).
  * Concurrency safe: locks team and event, enforces max_team_size, and atomically reserves a seat.
  */
-export async function joinTeamByCode(userId: string, code: string) {
-  const normalizedCode = code.replace(/^team-/i, '').trim().toUpperCase();
-  if (!normalizedCode) {
+export async function joinTeamByCode(
+  userId: string,
+  code: string,
+  answers?: Record<string, any>
+) {
+  const cleanCode = normalizeTeamCode(code.replace(/^team-/i, ''));
+  if (!cleanCode) {
     throw new AppError('VALIDATION_FAILED', 'Invite code is required.', 400);
   }
 
@@ -234,18 +280,35 @@ export async function joinTeamByCode(userId: string, code: string) {
     if (!user) {
       throw new AppError('NOT_FOUND', 'User not found.', 404);
     }
-    assertNotInCooldown(user);
+    try {
+      assertNotInCooldown(user);
+    } catch {
+      throw new AppError('NOT_ELIGIBLE', 'User is currently in cooldown and ineligible to register.', 403);
+    }
 
-    // 2. Select team FOR UPDATE
+    // 2. Select team FOR UPDATE (matching inviteCode normalized or inviteToken)
     const [team] = await tx
       .select()
       .from(teams)
-      .where(sql`upper(${teams.inviteCode}) = ${normalizedCode}`)
+      .where(
+        or(
+          sql`replace(replace(upper(${teams.inviteCode}), '-', ''), ' ', '') = ${cleanCode}`,
+          eq(teams.inviteToken, code.trim())
+        )
+      )
       .for('update')
       .limit(1);
 
     if (!team) {
-      throw new AppError('NOT_FOUND', `Team with invite code '${code}' not found.`, 404);
+      throw new AppError('INVALID', `Team code '${code}' is invalid or does not exist.`, 404);
+    }
+
+    // Check code status (REVOKED or EXPIRED)
+    if (team.codeStatus === 'REVOKED') {
+      throw new AppError('REVOKED', 'This team join code has been revoked by the team leader.', 409);
+    }
+    if (team.codeExpiresAt && team.codeExpiresAt < new Date()) {
+      throw new AppError('EXPIRED', 'This team join code has expired.', 409);
     }
 
     // 3. Status check: team must be FORMING
@@ -256,7 +319,7 @@ export async function joinTeamByCode(userId: string, code: string) {
       throw new AppError('CONFLICT', 'Team is disqualified.', 409);
     }
 
-    // 4. Ensure user not already in a team for this event
+    // 4. Ensure user not already in this team or in another team for this event
     const [existingMembership] = await tx
       .select({ teamId: teamMembers.teamId })
       .from(teamMembers)
@@ -264,7 +327,10 @@ export async function joinTeamByCode(userId: string, code: string) {
       .limit(1);
 
     if (existingMembership) {
-      throw new AppError('CONFLICT', 'You are already in a team for this event.', 409);
+      if (existingMembership.teamId === team.id) {
+        throw new AppError('ALREADY_MEMBER', 'You are already a member of this team.', 409);
+      }
+      throw new AppError('ALREADY_IN_OTHER_TEAM_FOR_EVENT', 'You are already in another team for this event.', 409);
     }
 
     // 5. Check team capacity: max_team_size
@@ -279,6 +345,20 @@ export async function joinTeamByCode(userId: string, code: string) {
       throw new AppError('NOT_FOUND', 'Event not found.', 404);
     }
 
+    if (event.status !== EventStatus.PUBLISHED && event.status !== EventStatus.LIVE) {
+      throw new AppError('REGISTRATION_CLOSED', 'Event is not open for registration.', 409);
+    }
+
+    // Late joining check
+    const now = new Date();
+    if (!event.allowLateJoining && now > event.registrationClosesAt) {
+      throw new AppError(
+        'LATE_JOINING_DISALLOWED',
+        'Late joining is disabled for this event as registration has closed.',
+        409
+      );
+    }
+
     const [memberCountRes] = await tx
       .select({ count: sql<number>`count(*)::int` })
       .from(teamMembers)
@@ -289,6 +369,22 @@ export async function joinTeamByCode(userId: string, code: string) {
 
     if (currentCount >= maxTeamSize) {
       throw new AppError('TEAM_FULL', `Team has reached maximum capacity of ${maxTeamSize} members.`, 409);
+    }
+
+    // Determine payment status for joining member based on event policy
+    let joinerPaymentStatus = PaymentStatus.NOT_REQUIRED;
+    let joinerAmountPaise = 0;
+
+    if (event.isPaid && event.pricePaise > 0) {
+      if (event.teamPaymentPolicy === 'PER_TEAM') {
+        // PER_TEAM: payment is covered by the team/leader pass
+        joinerPaymentStatus = PaymentStatus.NOT_REQUIRED;
+        joinerAmountPaise = 0;
+      } else {
+        // PER_MEMBER: individual member payment required
+        joinerPaymentStatus = PaymentStatus.PENDING;
+        joinerAmountPaise = event.pricePaise;
+      }
     }
 
     // 6. Atomic seat reservation for joiner
@@ -349,6 +445,10 @@ export async function joinTeamByCode(userId: string, code: string) {
           eventId: team.eventId,
           userId,
           status: RegistrationStatus.CONFIRMED,
+          paymentStatus: joinerPaymentStatus,
+          amountPaise: joinerAmountPaise,
+          formVersion: event.formVersion ?? 1,
+          approvalStatus: event.approvalRequired ? 'PENDING' : 'APPROVED',
         })
         .returning();
 
@@ -357,7 +457,18 @@ export async function joinTeamByCode(userId: string, code: string) {
       }
 
       joinerReg = newReg;
-      await issueTicket(tx, joinerReg);
+      if (joinerPaymentStatus === PaymentStatus.NOT_REQUIRED) {
+        await issueTicket(tx, joinerReg);
+      }
+    }
+
+    // If answers provided, record booking answers
+    if (answers && Object.keys(answers).length > 0) {
+      await submitAnswers(tx, {
+        registrationId: joinerReg.id,
+        eventId: team.eventId,
+        answers,
+      });
     }
 
     // 7. Insert member
@@ -398,7 +509,10 @@ export async function joinTeamByCode(userId: string, code: string) {
 
     return {
       success: true,
-      team,
+      team: {
+        ...team,
+        formattedCode: formatTeamCode(team.inviteCode),
+      },
       member: newMember,
       memberCount: currentCount + 1,
     };
@@ -502,6 +616,134 @@ export async function leaveTeam(userId: string, teamId: string) {
 }
 
 /**
+ * Removes a member from a team (by leader, organizer, or admin).
+ * Enforces allowMemberReplacement and releases the event seat.
+ */
+export async function removeTeamMember(
+  callerUserId: string,
+  teamId: string,
+  memberUserId: string
+) {
+  return await db.transaction(async (tx) => {
+    // 1. Select team FOR UPDATE
+    const [team] = await tx
+      .select()
+      .from(teams)
+      .where(eq(teams.id, teamId))
+      .for('update')
+      .limit(1);
+
+    if (!team) {
+      throw new AppError('NOT_FOUND', 'Team not found.', 404);
+    }
+
+    if (team.status === TeamStatus.LOCKED || team.status === TeamStatus.SUBMITTED) {
+      throw new AppError('ROSTER_LOCKED', 'Cannot remove members from a locked team roster.', 409);
+    }
+
+    if (memberUserId === team.leaderId) {
+      throw new AppError(
+        'VALIDATION_FAILED',
+        'The team leader cannot be removed. Transfer leadership or disband the team.',
+        400
+      );
+    }
+
+    // 2. Select event
+    const [event] = await tx
+      .select()
+      .from(events)
+      .where(eq(events.id, team.eventId))
+      .limit(1);
+
+    if (!event) {
+      throw new AppError('NOT_FOUND', 'Event not found.', 404);
+    }
+
+    // Check authorization: leader, organizer, or admin
+    let isAuthorized = team.leaderId === callerUserId;
+    if (!isAuthorized) {
+      const [caller] = await tx
+        .select({ role: users.role })
+        .from(users)
+        .where(eq(users.id, callerUserId))
+        .limit(1);
+
+      if (caller?.role === UserRole.ADMIN || event.createdBy === callerUserId) {
+        isAuthorized = true;
+      } else if (event.clubId) {
+        const [cm] = await tx
+          .select({ role: clubMembers.role })
+          .from(clubMembers)
+          .where(and(eq(clubMembers.clubId, event.clubId), eq(clubMembers.userId, callerUserId)))
+          .limit(1);
+        if (cm && (cm.role === ClubMemberRole.OWNER || cm.role === ClubMemberRole.ADMIN)) {
+          isAuthorized = true;
+        }
+      }
+    }
+
+    if (!isAuthorized) {
+      throw new AppError('FORBIDDEN', 'Only the team leader or event organizer can remove a member.', 403);
+    }
+
+    // 3. Member replacement check
+    if (!event.allowMemberReplacement) {
+      throw new AppError(
+        'REPLACEMENT_DISALLOWED',
+        'Member replacement is not allowed for this event.',
+        409
+      );
+    }
+
+    // 4. Verify target member is in team
+    const [membership] = await tx
+      .select()
+      .from(teamMembers)
+      .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, memberUserId)))
+      .limit(1);
+
+    if (!membership) {
+      throw new AppError('NOT_FOUND', 'Member not found in this team.', 404);
+    }
+
+    // 5. Delete from teamMembers
+    await tx
+      .delete(teamMembers)
+      .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, memberUserId)));
+
+    // 6. Update registration: unlink team and cancel
+    await tx
+      .update(registrations)
+      .set({
+        teamId: null,
+        status: RegistrationStatus.CANCELLED,
+        cancelledAt: new Date(),
+      })
+      .where(and(eq(registrations.eventId, team.eventId), eq(registrations.userId, memberUserId)));
+
+    // 7. Release seat back to event
+    await releaseSeat(tx, team.eventId);
+
+    // 8. Realtime event emit
+    try {
+      getIO().to(`team:${teamId}`).emit('team:update' as any, {
+        teamId,
+        action: 'MEMBER_REMOVED',
+        userId: memberUserId,
+      });
+    } catch {
+      // Ignore
+    }
+
+    return {
+      success: true,
+      removedUserId: memberUserId,
+    };
+  });
+}
+
+/**
  * Loads team by ID with all member profiles and leader information.
  */
 export async function getTeamById(teamId: string, currentUserId: string) {
@@ -567,6 +809,7 @@ export async function getTeamById(teamId: string, currentUserId: string) {
 
   return {
     ...team,
+    formattedCode: formatTeamCode(team.inviteCode),
     memberCount: members.length,
     members,
   };
@@ -722,4 +965,183 @@ export async function lockTeam(userId: string, teamId: string) {
       snapshot,
     };
   });
+}
+
+/**
+ * Regenerates the join code for a team (Leader only).
+ * Instantly invalidates the previous code and creates a new 8-character CSPRNG code.
+ */
+export async function regenerateTeamCode(
+  leaderId: string,
+  teamId: string,
+  expiryHours?: number
+) {
+  const [team] = await db
+    .select()
+    .from(teams)
+    .where(eq(teams.id, teamId))
+    .limit(1);
+
+  if (!team) {
+    throw new AppError('NOT_FOUND', 'Team not found.', 404);
+  }
+
+  if (team.leaderId !== leaderId) {
+    throw new AppError('FORBIDDEN', 'Only the team leader can regenerate the team code.', 403);
+  }
+
+  if (team.status === TeamStatus.LOCKED || team.status === TeamStatus.SUBMITTED) {
+    throw new AppError('ROSTER_LOCKED', 'Team roster is locked and code cannot be modified.', 409);
+  }
+
+  const newCode = generateTeamCode(8);
+  const newToken = generateTeamInviteToken();
+  const codeExpiresAt = expiryHours ? new Date(Date.now() + expiryHours * 3600000) : null;
+
+  const [updatedTeam] = await db
+    .update(teams)
+    .set({
+      inviteCode: newCode,
+      inviteToken: newToken,
+      codeStatus: 'ACTIVE',
+      codeExpiresAt,
+    })
+    .where(eq(teams.id, teamId))
+    .returning();
+
+  const formattedCode = formatTeamCode(newCode);
+
+  try {
+    getIO().to(`team:${teamId}`).emit('team:update' as any, {
+      team: {
+        ...updatedTeam,
+        formattedCode,
+      },
+    });
+  } catch {
+    // Sockets may be inactive
+  }
+
+  return {
+    team: {
+      ...updatedTeam,
+      formattedCode,
+    },
+    inviteCode: newCode,
+    formattedCode,
+    inviteToken: newToken,
+  };
+}
+
+/**
+ * Revokes the join code for a team (Leader only).
+ */
+export async function revokeTeamCode(leaderId: string, teamId: string) {
+  const [team] = await db
+    .select()
+    .from(teams)
+    .where(eq(teams.id, teamId))
+    .limit(1);
+
+  if (!team) {
+    throw new AppError('NOT_FOUND', 'Team not found.', 404);
+  }
+
+  if (team.leaderId !== leaderId) {
+    throw new AppError('FORBIDDEN', 'Only the team leader can revoke the team code.', 403);
+  }
+
+  const [updatedTeam] = await db
+    .update(teams)
+    .set({
+      codeStatus: 'REVOKED',
+    })
+    .where(eq(teams.id, teamId))
+    .returning();
+
+  const formattedCode = formatTeamCode(team.inviteCode);
+
+  try {
+    getIO().to(`team:${teamId}`).emit('team:update' as any, {
+      team: {
+        ...updatedTeam,
+        formattedCode,
+      },
+    });
+  } catch {
+    // Sockets may be inactive
+  }
+
+  return {
+    success: true,
+    message: 'Team join code has been revoked.',
+  };
+}
+
+/**
+ * Public/Safe preview of a team by code or invite token without auto-joining.
+ */
+export async function getTeamPreview(codeOrToken: string) {
+  const clean = normalizeTeamCode(codeOrToken.replace(/^team-/i, ''));
+  if (!clean) {
+    throw new AppError('VALIDATION_FAILED', 'Team code or invite token is required.', 400);
+  }
+
+  const [team] = await db
+    .select()
+    .from(teams)
+    .where(
+      or(
+        sql`replace(replace(upper(${teams.inviteCode}), '-', ''), ' ', '') = ${clean}`,
+        eq(teams.inviteToken, codeOrToken.trim())
+      )
+    )
+    .limit(1);
+
+  if (!team) {
+    throw new AppError('INVALID', 'Team not found or code is invalid.', 404);
+  }
+
+  if (team.codeStatus === 'REVOKED') {
+    throw new AppError('REVOKED', 'This team join code has been revoked.', 409);
+  }
+
+  if (team.codeExpiresAt && team.codeExpiresAt < new Date()) {
+    throw new AppError('EXPIRED', 'This team join code has expired.', 409);
+  }
+
+  const [event] = await db
+    .select()
+    .from(events)
+    .where(eq(events.id, team.eventId))
+    .limit(1);
+
+  const [leader] = await db
+    .select({ fullName: users.fullName, avatarUrl: users.avatarUrl })
+    .from(users)
+    .where(eq(users.id, team.leaderId))
+    .limit(1);
+
+  const [memberCountRes] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(teamMembers)
+    .where(eq(teamMembers.teamId, team.id));
+
+  return {
+    teamId: team.id,
+    teamName: team.name,
+    eventId: team.eventId,
+    eventTitle: event?.title ?? 'Event',
+    leaderName: leader?.fullName ?? 'Team Leader',
+    leaderAvatarUrl: leader?.avatarUrl,
+    memberCount: memberCountRes?.count ?? 1,
+    minTeamSize: event?.minTeamSize ?? 2,
+    maxTeamSize: event?.maxTeamSize ?? 4,
+    isLocked: team.status === TeamStatus.LOCKED || team.status === TeamStatus.SUBMITTED,
+    isPaid: Boolean(event?.isPaid),
+    pricePaise: event?.pricePaise ?? 0,
+    teamPaymentPolicy: event?.teamPaymentPolicy ?? 'PER_MEMBER',
+    formattedCode: formatTeamCode(team.inviteCode),
+    inviteToken: team.inviteToken,
+  };
 }

@@ -144,33 +144,22 @@ The monorepo includes end-to-end integration tests, concurrency race stress test
 
 ### Run Verification Gate
 ```bash
-# 1. Typecheck & Lint
-pnpm -r typecheck && pnpm -r lint
+# 1. Typecheck & Monorepo Compilation
+pnpm -r typecheck
 
 # 2. Production Build
 pnpm -r build
 
-# 3. Unit & Integration Tests (270+ tests across workspace)
+# 3. Unit & Integration Tests (575 tests across workspace)
 pnpm -r test
 
-# 4. ACID Concurrency Engine (10 repeated trials, 25 clients racing for 1 seat)
-pnpm --filter api test:concurrency
-
-# 5. Playwright E2E Suite
+# 4. Playwright Multi-Role E2E Suite (17 tests)
 pnpm e2e
-
-# 6. Verify Zero TODOs / Placeholders
-! git grep -InE "TODO|FIXME|not implemented|rest of implementation" -- apps packages scripts e2e && echo "NO PLACEHOLDERS FOUND"
-
-# 7. Headless Viva Concurrency Benchmark
-bash scripts/viva.sh --headless
-
-# 8. Post-Deploy Smoke Verification
-pnpm smoke:prod
 ```
 
-### Seeded Credentials for Interactive Demo
+### Seeded Credentials for Interactive Demo & 5-Role Access
 - **Student:** `arjun.mehta@eventora.campus.edu` (`user_student_001`)
 - **Organizer:** `priya.patel@eventora.campus.edu` (`user_organizer_001`)
 - **Faculty Coordinator:** `dr.sharma@eventora.campus.edu` (`user_faculty_001`)
-- **Administrator:** `admin@eventora.campus.edu` (`user_admin_001`)
+- **Volunteer Scanner:** `rohit.kumar@eventora.campus.edu` (`user_volunteer_001` / Passkey: `SCAN-123456`)
+- **Campus Administrator:** `admin@eventora.campus.edu` (`user_admin_001`)

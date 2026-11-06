@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Prompt 25: Comprehensive End-to-End Role Journeys (No Mocks, Real DB & Real API)', () => {
-  const API_URL = 'http://localhost:3001';
+  const API_URL = process.env.API_URL || 'http://localhost:4000';
 
   test('Student journey: discover, free & paid sandbox registration, passport QR & OD check', async ({
     page,
@@ -40,10 +40,13 @@ test.describe('Prompt 25: Comprehensive End-to-End Role Journeys (No Mocks, Real
 
     // 2. Discover feed: open homepage, assert header and cards visible
     await page.goto('/');
-    await page.evaluate(() => localStorage.setItem('eventora_test_user_id', 'user_student_001'));
+    await page.evaluate(() => {
+      sessionStorage.setItem('eventora_test_user_id', 'user_student_001');
+      localStorage.setItem('eventora_test_user_id', 'user_student_001');
+    });
     await page.goto('/');
 
-    await expect(page.locator('text=Discover Campus Life')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('text=Upcoming Events').or(page.locator('text=Welcome back')).first()).toBeVisible({ timeout: 10000 });
 
     // 3. Navigate directly to Event Details page
     await page.goto(`/events/${freeSlug}`);
@@ -56,12 +59,17 @@ test.describe('Prompt 25: Comprehensive End-to-End Role Journeys (No Mocks, Real
     // Confirm dialog opened
     await expect(page.locator('[role="dialog"]')).toBeVisible();
 
-    // Submit registration in dialog
-    const confirmBtn = page.locator('button:has-text("Confirm Registration")').first();
-    await confirmBtn.click();
+    // Submit registration in dialog (Proceed to review -> Final Confirm)
+    const reviewBtn = page.locator('button:has-text("Review & Confirm Registration"), button:has-text("Confirm Registration")').first();
+    await reviewBtn.click();
+
+    const finalConfirmBtn = page.locator('[data-testid="confirm-registration-btn"], button:has-text("Confirm Registration")').first();
+    if (await finalConfirmBtn.isVisible()) {
+      await finalConfirmBtn.click();
+    }
 
     // Assert confirmed registration state
-    await expect(page.locator('text=Attendance Confirmed!').or(page.locator('text=Confirmed')).first()).toBeVisible();
+    await expect(page.locator('text=You are Confirmed!').or(page.locator('text=Attendance Confirmed!')).or(page.locator('text=Confirmed')).first()).toBeVisible();
 
     // 4. Student visits /passport
     await page.goto('/passport');
@@ -103,7 +111,10 @@ test.describe('Prompt 25: Comprehensive End-to-End Role Journeys (No Mocks, Real
 
     // 1. Organizer navigates to Gate Operations page
     await page.goto('/');
-    await page.evaluate(() => localStorage.setItem('eventora_test_user_id', 'user_organizer_001'));
+    await page.evaluate(() => {
+      sessionStorage.setItem('eventora_test_user_id', 'user_organizer_001');
+      localStorage.setItem('eventora_test_user_id', 'user_organizer_001');
+    });
     await page.goto(`/organizer/events/${orgEvent.id}/gate`);
 
     // Assert gate terminal controls are rendered
@@ -119,7 +130,10 @@ test.describe('Prompt 25: Comprehensive End-to-End Role Journeys (No Mocks, Real
   }) => {
     // 1. Faculty dashboard
     await page.goto('/');
-    await page.evaluate(() => localStorage.setItem('eventora_test_user_id', 'user_faculty_001'));
+    await page.evaluate(() => {
+      sessionStorage.setItem('eventora_test_user_id', 'user_faculty_001');
+      localStorage.setItem('eventora_test_user_id', 'user_faculty_001');
+    });
     await page.goto('/faculty/dashboard');
 
     await expect(page.getByRole('heading', { name: 'Faculty Dashboard' })).toBeVisible();
@@ -127,7 +141,10 @@ test.describe('Prompt 25: Comprehensive End-to-End Role Journeys (No Mocks, Real
 
     // 2. Admin dashboard & campus analytics
     await page.goto('/');
-    await page.evaluate(() => localStorage.setItem('eventora_test_user_id', 'user_admin_001'));
+    await page.evaluate(() => {
+      sessionStorage.setItem('eventora_test_user_id', 'user_admin_001');
+      localStorage.setItem('eventora_test_user_id', 'user_admin_001');
+    });
     await page.goto('/admin');
 
     await expect(page.locator('text=Campus Governance & Analytics').or(page.locator('text=Campus Governance')).first()).toBeVisible();

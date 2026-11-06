@@ -765,7 +765,7 @@ describe('Google-Forms-Style Dynamic Form Engine + Schema Freeze', () => {
       // Check header line contains standard user fields and question labels
       const headerLine = lines[0];
       expect(headerLine).toContain('Registration ID');
-      expect(headerLine).toContain('User Name');
+      expect(headerLine).toContain('Full Name');
       expect(headerLine).toContain('Full Legal Name');
       expect(headerLine).toContain('Expected Graduation Year');
 

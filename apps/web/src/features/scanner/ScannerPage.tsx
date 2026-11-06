@@ -60,6 +60,36 @@ interface GateStats {
   };
 }
 
+function parseScannerToken(token: string): {
+  eventId?: string;
+  eventTitle?: string;
+  volunteerName?: string;
+  exp?: number;
+} | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length === 3) {
+      const base64Url = parts[1]!;
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      let json = '';
+      try {
+        json = decodeURIComponent(
+          atob(base64)
+            .split('')
+            .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+            .join('')
+        );
+      } catch {
+        json = atob(base64);
+      }
+      return JSON.parse(json);
+    }
+  } catch {
+    // Malformed token or non-JWT
+  }
+  return null;
+}
+
 const TOKEN_REGEX = /^ev_tok_[A-Za-z0-9]{25}$/;
 
 export const ScannerPage: React.FC = () => {
@@ -78,6 +108,8 @@ export const ScannerPage: React.FC = () => {
   const streamRef = useRef<MediaStream | null>(null);
   const trackRef = useRef<MediaStreamTrack | null>(null);
   const animFrameRef = useRef<number | null>(null);
+  const isInitializingRef = useRef(false);
+  const isMountedRef = useRef(true);
 
   const [hasTorch, setHasTorch] = useState(false);
   const [isTorchOn, setIsTorchOn] = useState(false);
@@ -118,21 +150,107 @@ export const ScannerPage: React.FC = () => {
   });
   const feedbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 1. Initial authentication check
+  // 1. Initial authentication and authoritative event context resolution
   useEffect(() => {
-    const token = sessionStorage.getItem('eventora_scanner_token');
-    const storedEvent = sessionStorage.getItem('eventora_scanner_event');
+    const token =
+      sessionStorage.getItem('eventora_scanner_token') ||
+      localStorage.getItem('eventora_scanner_token') ||
+      localStorage.getItem('scanner_token');
 
-    if (!token || !storedEvent) {
+    if (!token) {
       navigate('/scanner/unlock', { replace: true });
       return;
     }
 
-    try {
-      setSessionInfo(JSON.parse(storedEvent));
-    } catch {
-      navigate('/scanner/unlock', { replace: true });
+    // Decode token payload
+    const decoded = parseScannerToken(token);
+
+    // Inspect stored event
+    const rawStored =
+      sessionStorage.getItem('eventora_scanner_event') ||
+      localStorage.getItem('eventora_scanner_event') ||
+      localStorage.getItem('scanner_session');
+
+    let parsedStored: { eventId?: string; eventTitle?: string; volunteerName?: string } | null = null;
+    if (rawStored) {
+      try {
+        parsedStored = JSON.parse(rawStored);
+      } catch {
+        // ignore
+      }
     }
+
+    // If token is a 3-part JWT, validate expiration and event consistency
+    if (decoded) {
+      if (decoded.exp && Date.now() >= decoded.exp * 1000) {
+        sessionStorage.removeItem('eventora_scanner_token');
+        sessionStorage.removeItem('eventora_scanner_event');
+        localStorage.removeItem('eventora_scanner_token');
+        localStorage.removeItem('eventora_scanner_event');
+        localStorage.removeItem('scanner_token');
+        localStorage.removeItem('scanner_session');
+        navigate('/scanner/unlock', { replace: true });
+        return;
+      }
+
+      // Crucial: Discard stale stored event if its eventId does not match the token's authoritative eventId
+      if (parsedStored && parsedStored.eventId && decoded.eventId && parsedStored.eventId !== decoded.eventId) {
+        parsedStored = null;
+      }
+    }
+
+    const eventId = decoded?.eventId || parsedStored?.eventId;
+    if (!eventId) {
+      navigate('/scanner/unlock', { replace: true });
+      return;
+    }
+
+    const authoritativeEvent = {
+      eventId,
+      eventTitle: decoded?.eventTitle || parsedStored?.eventTitle || 'Campus Gate',
+      volunteerName: decoded?.volunteerName || parsedStored?.volunteerName || 'Volunteer',
+    };
+
+    setSessionInfo(authoritativeEvent);
+
+    // Synchronize storage
+    sessionStorage.setItem('eventora_scanner_token', token);
+    sessionStorage.setItem('eventora_scanner_event', JSON.stringify(authoritativeEvent));
+
+    // Verify and hydrate authoritative context from server
+    api
+      .get<{
+        eventId: string;
+        eventTitle: string;
+        volunteerName: string;
+      }>('/gate/context', { showToast: false })
+      .then((res) => {
+        if (res && res.eventId) {
+          setSessionInfo({
+            eventId: res.eventId,
+            eventTitle: res.eventTitle,
+            volunteerName: res.volunteerName,
+          });
+          const updated = JSON.stringify({
+            eventId: res.eventId,
+            eventTitle: res.eventTitle,
+            volunteerName: res.volunteerName,
+          });
+          sessionStorage.setItem('eventora_scanner_event', updated);
+          localStorage.setItem('eventora_scanner_event', updated);
+        }
+      })
+      .catch((err: any) => {
+        if (err?.statusCode === 401 || err?.statusCode === 403 || err?.status === 401 || err?.status === 403) {
+          sessionStorage.removeItem('eventora_scanner_token');
+          sessionStorage.removeItem('eventora_scanner_event');
+          localStorage.removeItem('eventora_scanner_token');
+          localStorage.removeItem('eventora_scanner_event');
+          localStorage.removeItem('scanner_token');
+          localStorage.removeItem('scanner_session');
+          navigate('/scanner/unlock', { replace: true });
+        }
+      });
   }, [navigate]);
 
   // 2. Offline network listener (Atomic guard: pauses processing when offline)
@@ -339,8 +457,10 @@ export const ScannerPage: React.FC = () => {
     [sessionInfo?.eventId, mode, showFeedback, fetchStats]
   );
 
-  // 6. Camera scanning loop
-  const startScanningLoop = useCallback(() => {
+  // 6. Camera scanning loop (active while camera stream is live)
+  useEffect(() => {
+    if (!isCameraActive) return;
+
     let active = true;
 
     const tick = async () => {
@@ -399,9 +519,10 @@ export const ScannerPage: React.FC = () => {
       active = false;
       if (animFrameRef.current) {
         cancelAnimationFrame(animFrameRef.current);
+        animFrameRef.current = null;
       }
     };
-  }, [handleTokenScanned]);
+  }, [isCameraActive, handleTokenScanned]);
 
   // Test event listener to simulate scans in automated test runners
   useEffect(() => {
@@ -416,18 +537,57 @@ export const ScannerPage: React.FC = () => {
     };
   }, [handleTokenScanned]);
 
-  // 7. Initialize Camera
-  useEffect(() => {
-    let cancelLoop: (() => void) | undefined;
-
-    const initCamera = async () => {
-      try {
-        if (!navigator.mediaDevices?.getUserMedia) {
-          setCameraError('Camera API is not supported in this browser.');
-          return;
+  // 7. Stop Camera Stream
+  const stopCameraStream = useCallback(() => {
+    if (animFrameRef.current) {
+      cancelAnimationFrame(animFrameRef.current);
+      animFrameRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch {
+          // ignore
         }
+      });
+      streamRef.current = null;
+    }
+    trackRef.current = null;
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setIsCameraActive(false);
+    setIsTorchOn(false);
+    setHasTorch(false);
+  }, []);
 
-        const stream = await navigator.mediaDevices.getUserMedia({
+  // 8. Initialize Camera with Progressive Constraints and Error Recovery
+  const initCamera = useCallback(async () => {
+    if (isInitializingRef.current) return;
+    isInitializingRef.current = true;
+
+    try {
+      if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+        setCameraError('Camera API is not supported in this browser.');
+        return;
+      }
+
+      // If active stream is already live, keep running without redundant hardware request
+      if (
+        streamRef.current &&
+        streamRef.current.active &&
+        streamRef.current.getVideoTracks().some((t) => t.readyState === 'live')
+      ) {
+        setIsCameraActive(true);
+        setCameraError(null);
+        return;
+      }
+
+      // Step A: Request camera with progressive fallback (ideal environment -> basic video)
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
           audio: false,
           video: {
             facingMode: { ideal: 'environment' },
@@ -435,43 +595,121 @@ export const ScannerPage: React.FC = () => {
             height: { ideal: 720 },
           },
         });
+      } catch (constraintErr: any) {
+        if (
+          constraintErr.name === 'OverconstrainedError' ||
+          constraintErr.name === 'ConstraintNotSatisfiedError'
+        ) {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: true,
+          });
+        } else {
+          throw constraintErr;
+        }
+      }
 
-        streamRef.current = stream;
-        const track = stream.getVideoTracks()[0];
-        trackRef.current = track || null;
+      if (!isMountedRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
 
-        if (track) {
-          const capabilities = (track.getCapabilities?.() as any) || {};
-          if (capabilities.torch) {
-            setHasTorch(true);
+      streamRef.current = stream;
+      const track = stream.getVideoTracks()[0] || null;
+      trackRef.current = track;
+
+      if (track) {
+        track.onended = () => {
+          if (isMountedRef.current) {
+            setIsCameraActive(false);
+          }
+        };
+
+        const capabilities = (track.getCapabilities?.() as any) || {};
+        if (capabilities.torch) {
+          setHasTorch(true);
+        }
+      }
+
+      const video = videoRef.current;
+      if (video) {
+        video.srcObject = stream;
+        video.setAttribute('playsinline', 'true');
+        video.muted = true;
+
+        video.onplaying = () => {
+          if (isMountedRef.current) {
+            setIsCameraActive(true);
+            setCameraError(null);
+          }
+        };
+
+        try {
+          await video.play();
+          if (isMountedRef.current) {
+            setIsCameraActive(true);
+            setCameraError(null);
+          }
+        } catch (playErr: any) {
+          // In Edge / Chromium, video.play() can reject with AbortError if interrupted
+          if (playErr.name === 'AbortError') {
+            if (video.readyState >= 2 || !video.paused) {
+              setIsCameraActive(true);
+              setCameraError(null);
+            }
+          } else if (playErr.name === 'NotAllowedError') {
+            try {
+              video.muted = true;
+              await video.play();
+              setIsCameraActive(true);
+              setCameraError(null);
+            } catch {
+              setCameraError('Tap anywhere to enable camera preview.');
+            }
+          } else {
+            if (!stream.active) {
+              setCameraError('Failed to start video stream playback.');
+            }
           }
         }
-
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-          setIsCameraActive(true);
-          cancelLoop = startScanningLoop();
-        }
-      } catch (err: any) {
-        setCameraError(
-          err.name === 'NotAllowedError'
-            ? 'Camera permission denied. Allow camera access to scan tickets.'
-            : 'Failed to access camera stream.'
-        );
       }
-    };
+    } catch (err: any) {
+      if (!isMountedRef.current) return;
 
+      const errName = err?.name || '';
+      if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
+        setCameraError(
+          'Camera permission denied. Please allow camera access in browser settings to scan tickets.'
+        );
+      } else if (errName === 'NotFoundError' || errName === 'DevicesNotFoundError') {
+        setCameraError('No camera device found on this system.');
+      } else if (errName === 'NotReadableError' || errName === 'TrackStartError') {
+        setCameraError(
+          'Camera is in use by another application. Please close other camera tabs and retry.'
+        );
+      } else {
+        setCameraError('Failed to access camera stream. Please check camera connection.');
+      }
+    } finally {
+      isInitializingRef.current = false;
+    }
+  }, []);
+
+  const retryCamera = useCallback(async () => {
+    setCameraError(null);
+    stopCameraStream();
+    await initCamera();
+  }, [stopCameraStream, initCamera]);
+
+  useEffect(() => {
+    isMountedRef.current = true;
     void initCamera();
 
     return () => {
-      if (cancelLoop) cancelLoop();
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
-      }
+      isMountedRef.current = false;
+      stopCameraStream();
     };
-  }, [startScanningLoop]);
+  }, [initCamera, stopCameraStream]);
 
   // Torch toggle
   const toggleTorch = async () => {
@@ -489,11 +727,13 @@ export const ScannerPage: React.FC = () => {
 
   // Exit Scanner
   const handleExit = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-    }
+    stopCameraStream();
     sessionStorage.removeItem('eventora_scanner_token');
     sessionStorage.removeItem('eventora_scanner_event');
+    localStorage.removeItem('eventora_scanner_token');
+    localStorage.removeItem('eventora_scanner_event');
+    localStorage.removeItem('scanner_token');
+    localStorage.removeItem('scanner_session');
     navigate('/scanner/unlock', { replace: true });
   };
 
@@ -667,13 +907,13 @@ export const ScannerPage: React.FC = () => {
 
       {/* Center Target Frame */}
       <div className="relative z-20 flex flex-col items-center justify-center pointer-events-none my-auto">
-        {cameraError ? (
+        {cameraError && !isCameraActive ? (
           <div className="max-w-xs text-center p-6 rounded-2xl bg-slate-900/90 border border-slate-800 text-slate-300 space-y-3 pointer-events-auto backdrop-blur-lg">
             <AlertTriangle className="h-10 w-10 text-amber-400 mx-auto" />
             <p className="text-sm font-medium">{cameraError}</p>
             <Button
               size="sm"
-              onClick={() => window.location.reload()}
+              onClick={retryCamera}
               className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold"
             >
               Retry Camera

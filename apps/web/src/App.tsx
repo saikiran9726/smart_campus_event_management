@@ -16,8 +16,10 @@ const FacultyDashboardPage = lazy(() => import('@/features/faculty/FacultyDashbo
 const ScannerUnlockPage = lazy(() => import('@/features/scanner/ScannerUnlockPage'));
 const ScannerPage = lazy(() => import('@/features/scanner/ScannerPage'));
 const WaitlistClaimPage = lazy(() => import('@/features/claim/ClaimOfferPage'));
+const TeamJoinPage = lazy(() => import('@/features/team/TeamJoinPage'));
 
 const PassportPage = lazy(() => import('@/features/passport/PassportPage'));
+const VolunteerDashboardPage = lazy(() => import('@/features/volunteer/VolunteerDashboardPage'));
 const CommunityPage = lazy(() => import('@/features/community/CommunityPage'));
 const EventDoubtRoomPage = lazy(() => import('@/features/community/EventDoubtRoomPage'));
 const OrganizerDashboard = lazy(() => import('@/features/organizer/OrganizerDashboard'));
@@ -34,6 +36,9 @@ const ClubSettingsPage = lazy(() => import('@/features/organizer/ClubSettingsPag
 const AdminPage = lazy(() => import('@/routes/admin'));
 const ProfilePage = lazy(() => import('@/features/profile/ProfilePage'));
 const NotFoundPage = lazy(() => import('@/features/error/NotFoundPage'));
+const DesignSystemShowcasePage = lazy(() =>
+  import('@/pages/DesignSystemShowcasePage').then((m) => ({ default: m.DesignSystemShowcasePage }))
+);
 
 const PageFallback: React.FC = () => (
   <div className="container max-w-5xl py-8 px-4 sm:px-8 space-y-6 mx-auto animate-pulse">
@@ -63,6 +68,9 @@ export const AppRoutes: React.FC = () => {
           <Route path="/scanner/unlock" element={<ScannerUnlockPage />} />
           <Route path="/scanner" element={<ScannerPage />} />
           <Route path="/claim/:registrationId" element={<WaitlistClaimPage />} />
+          <Route path="/teams/join" element={<TeamJoinPage />} />
+          <Route path="/invite/:token" element={<TeamJoinPage />} />
+          <Route path="/_design" element={<DesignSystemShowcasePage />} />
 
           {/* Authed Student & General Routes */}
           <Route
@@ -70,6 +78,14 @@ export const AppRoutes: React.FC = () => {
             element={
               <RequireAuth>
                 <PassportPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/volunteer"
+            element={
+              <RequireAuth>
+                <VolunteerDashboardPage />
               </RequireAuth>
             }
           />

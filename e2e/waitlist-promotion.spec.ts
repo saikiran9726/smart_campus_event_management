@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Waitlist Promotion & Automatic Expiry Sweep', () => {
-  const API_URL = 'http://localhost:3001';
+  const API_URL = process.env.API_URL || 'http://localhost:4000';
 
   test('cancelling confirmed booking offers seat to waitlisted user; user claims; second expiry transfers to next in queue', async ({
     page,

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Form Freezing Invariant After First Registration', () => {
-  const API_URL = 'http://localhost:3001';
+  const API_URL = process.env.API_URL || 'http://localhost:4000';
 
   test('organizer sees frozen banner after first registration and cannot modify existing questions', async ({
     page,
@@ -23,6 +23,7 @@ test.describe('Form Freezing Invariant After First Registration', () => {
         startAt: new Date(Date.now() + 86400000).toISOString(),
         endAt: new Date(Date.now() + 172800000).toISOString(),
         category: 'Tech',
+        posterKey: 'posters/test-banner.jpg',
       },
     });
     expect(createRes.status()).toBe(201);

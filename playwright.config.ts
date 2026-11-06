@@ -13,7 +13,7 @@ export default defineConfig({
   reporter: 'list',
   globalSetup: './e2e/global-setup.ts',
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: process.env.PUBLIC_WEB_URL || 'http://localhost:5173',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     extraHTTPHeaders: {
@@ -32,26 +32,29 @@ export default defineConfig({
   webServer: [
     {
       command: 'pnpm --filter api dev',
-      url: 'http://localhost:3001/health',
+      url: 'http://localhost:4000/health',
       reuseExistingServer: true,
       timeout: 60000,
       env: {
         NODE_ENV: 'test',
-        PORT: '3001',
+        PORT: '4000',
+        DATABASE_URL:
+          process.env.DATABASE_URL ||
+          'postgresql://postgres:sai09072006@localhost:5432/eventora_venue_test?sslmode=disable',
         START_SERVER: 'true',
-        PUBLIC_WEB_URL: 'http://localhost:3000',
-        PUBLIC_API_URL: 'http://localhost:3001',
+        PUBLIC_WEB_URL: 'http://localhost:5173',
+        PUBLIC_API_URL: 'http://localhost:4000',
       },
     },
     {
-      command: 'pnpm --filter web dev --port 3000',
-      url: 'http://localhost:3000',
+      command: 'pnpm --filter web dev --port 5173',
+      url: 'http://localhost:5173',
       reuseExistingServer: true,
       timeout: 60000,
       env: {
         NODE_ENV: 'test',
-        PORT: '3000',
-        VITE_API_URL: 'http://localhost:3001',
+        PORT: '5173',
+        VITE_API_URL: 'http://localhost:4000',
       },
     },
   ],

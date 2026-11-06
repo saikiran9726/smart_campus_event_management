@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/use-toast';
@@ -7,6 +8,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { copyToClipboard } from '@/lib/clipboard';
 import {
   Select,
   SelectContent,
@@ -14,6 +17,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   Shield,
   Building2,
@@ -26,11 +37,35 @@ import {
   CheckCircle2,
   AlertTriangle,
   Mail,
+  MessageSquare,
   ChevronLeft,
   ChevronRight,
   ShieldAlert,
   Activity,
+  UserCheck,
+  Plus,
+  DoorOpen,
+  Copy,
+  Check,
 } from 'lucide-react';
+
+interface VolunteerItem {
+  id: string;
+  eventId: string;
+  eventTitle: string;
+  eventSlug: string;
+  userId: string;
+  fullName: string;
+  email: string;
+  rollNumber: string | null;
+  department: string | null;
+  gate: string;
+  role: string;
+  status: 'ACTIVE' | 'REVOKED';
+  notes: string | null;
+  totalScans: number;
+  createdAt: string;
+}
 
 interface UserItem {
   id: string;
@@ -87,12 +122,49 @@ interface NotificationItem {
   runAt?: string;
 }
 
+interface CampusMacroAnalytics {
+  overview: {
+    totalClubs: number;
+    totalEvents: number;
+    totalRegistrations: number;
+    totalCheckedIn: number;
+    campusAttendanceRate: number;
+  };
+  clubs: Array<{
+    clubId: string;
+    clubName: string;
+    clubSlug: string;
+    totalEvents: number;
+    totalRegistrations: number;
+    totalCheckedIn: number;
+    averageAttendanceRate: number;
+  }>;
+  topEvents: Array<{
+    eventId: string;
+    title: string;
+    clubName: string;
+    date: string | null;
+    registrations: number;
+    checkedIn: number;
+  }>;
+}
+
 export const AdminPage: React.FC = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   // Tab State
-  const [activeTab, setActiveTab] = useState('overview');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'overview');
+
+  const handleTabChange = (val: string) => {
+    setActiveTab(val);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', val);
+      return next;
+    }, { replace: true });
+  };
 
   // User Governance State
   const [userPage, setUserPage] = useState(1);
@@ -108,11 +180,11 @@ export const AdminPage: React.FC = () => {
   const [auditActionFilter, setAuditActionFilter] = useState<string>('ALL');
 
   // 1. Campus Macro Analytics
-  const { data: campusData } = useQuery({
+  const { data: campusData } = useQuery<CampusMacroAnalytics | null>({
     queryKey: ['admin', 'campus'],
     queryFn: async () => {
       try {
-        return await api.get<Record<string, unknown>>('/admin/analytics/campus', {
+        return await api.get<CampusMacroAnalytics>('/admin/analytics/campus', {
           showToast: false,
         });
       } catch {
@@ -207,7 +279,43 @@ export const AdminPage: React.FC = () => {
     enabled: activeTab === 'audit',
   });
 
-  // 5. Failed Notifications DLQ Query
+  // 5. Failed Notifications DLQ Query & Stats
+  const {
+    data: commsStats,
+    refetch: refetchCommsStats,
+  } = useQuery({
+    queryKey: ['admin', 'notifications', 'stats'],
+    queryFn: async () => {
+      return await api.get<{
+        total: number;
+        queued: number;
+        sent: number;
+        failed: number;
+        read: number;
+        dlq: number;
+        totalRetries: number;
+        email: { queued: number; sent: number; delivered: number; failed: number };
+        whatsapp: { queued: number; accepted: number; delivered: number; read: number; failed: number; skipped: number };
+        inApp: { created: number; read: number };
+      }>('/admin/notifications/stats', { showToast: false });
+    },
+    enabled: activeTab === 'deadletter',
+  });
+
+  const {
+    data: providerHealth,
+    refetch: refetchProviders,
+  } = useQuery({
+    queryKey: ['admin', 'notifications', 'providers'],
+    queryFn: async () => {
+      return await api.get<{
+        email: { provider: string; isConfigured: boolean; sender: string; status: string };
+        whatsapp: { provider: string; isConfigured: boolean; apiVersion: string; phoneNumberIdMasked: string | null; webhookVerified: boolean; status: string };
+      }>('/admin/notifications/providers', { showToast: false });
+    },
+    enabled: activeTab === 'deadletter',
+  });
+
   const {
     data: dlqData,
     isLoading: isDlqLoading,
@@ -234,11 +342,96 @@ export const AdminPage: React.FC = () => {
         description: 'Notification has been requeued for background delivery.',
       });
       refetchDlq();
+      refetchCommsStats();
     },
     onError: (err: any) => {
       toast({
         title: 'Retry Failed',
         description: err?.message || 'Could not requeue notification.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // 6. Volunteer Management
+  const [volunteerSearch, setVolunteerSearch] = useState('');
+  const [volunteerStatusFilter, setVolunteerStatusFilter] = useState('ALL');
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [newVolEmail, setNewVolEmail] = useState('');
+  const [newVolName, setNewVolName] = useState('');
+  const [newVolRoll, setNewVolRoll] = useState('');
+  const [newVolEventId, setNewVolEventId] = useState('');
+  const [newVolGate, setNewVolGate] = useState('Main Gate');
+  const [newVolRole, setNewVolRole] = useState('SCANNER');
+  const [newVolNotes, setNewVolNotes] = useState('');
+  const [createdVolunteerToken, setCreatedVolunteerToken] = useState<string | null>(null);
+  const [hasCopiedVolToken, setHasCopiedVolToken] = useState(false);
+
+  const {
+    data: volunteerData,
+    isLoading: isVolunteerLoading,
+    refetch: refetchVolunteers,
+  } = useQuery({
+    queryKey: ['admin', 'volunteers', volunteerSearch, volunteerStatusFilter],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (volunteerSearch) params.set('q', volunteerSearch);
+      if (volunteerStatusFilter !== 'ALL') params.set('status', volunteerStatusFilter);
+      return await api.get<{
+        items: VolunteerItem[];
+        total: number;
+      }>(`/admin/volunteers?${params.toString()}`, { showToast: false });
+    },
+    enabled: activeTab === 'volunteers',
+  });
+
+  const inviteVolunteerMutation = useMutation({
+    mutationFn: async () => {
+      return await api.post<{
+        volunteer: any;
+        invitationToken: string;
+      }>('/admin/volunteers', {
+        eventId: newVolEventId.trim(),
+        email: newVolEmail.trim(),
+        fullName: newVolName.trim(),
+        rollNumber: newVolRoll.trim() || undefined,
+        gate: newVolGate.trim() || 'Main Gate',
+        role: newVolRole.trim() || 'SCANNER',
+        notes: newVolNotes.trim() || undefined,
+      });
+    },
+    onSuccess: (res) => {
+      setCreatedVolunteerToken(res.invitationToken);
+      refetchVolunteers();
+      toast({
+        title: 'Volunteer Assigned!',
+        description: `Duty assigned. Code: ${res.invitationToken}`,
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: 'Assignment Failed',
+        description: err?.message || 'Could not assign volunteer.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const revokeVolunteerMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return await api.delete(`/admin/volunteers/${id}`);
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Volunteer Revoked',
+        description: 'Volunteer assignment marked revoked.',
+      });
+      refetchVolunteers();
+    },
+    onError: (err: any) => {
+      toast({
+        title: 'Revocation Failed',
+        description: err?.message || 'Could not revoke volunteer.',
         variant: 'destructive',
       });
     },
@@ -260,7 +453,7 @@ export const AdminPage: React.FC = () => {
   return (
     <div className="container max-w-6xl px-4 sm:px-8 py-8 mx-auto space-y-6">
       <div className="flex flex-col gap-1">
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 text-xs font-semibold w-fit">
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/10 text-rose-700 dark:text-rose-300 text-xs font-bold w-fit">
           <Shield className="h-3.5 w-3.5" />
           Campus Governance
         </div>
@@ -270,11 +463,15 @@ export const AdminPage: React.FC = () => {
         </p>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid grid-cols-2 sm:grid-cols-5 w-full">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
+        <TabsList className="grid grid-cols-2 sm:grid-cols-6 w-full">
           <TabsTrigger value="overview" className="flex items-center gap-1.5">
             <Activity className="h-4 w-4" />
             <span>Overview</span>
+          </TabsTrigger>
+          <TabsTrigger value="volunteers" className="flex items-center gap-1.5">
+            <UserCheck className="h-4 w-4" />
+            <span>Volunteers</span>
           </TabsTrigger>
           <TabsTrigger value="users" className="flex items-center gap-1.5">
             <Users className="h-4 w-4" />
@@ -300,9 +497,9 @@ export const AdminPage: React.FC = () => {
             <Card className="border-border p-5 space-y-2">
               <div className="flex items-center justify-between text-muted-foreground">
                 <span className="text-xs font-semibold uppercase tracking-wider">Registered Clubs</span>
-                <Building2 className="h-4 w-4 text-indigo-500" />
+                <Building2 className="h-4 w-4 text-teal-600 dark:text-teal-400" />
               </div>
-              <p className="text-3xl font-bold tnum">{(campusData?.totalClubs as number) || 18}</p>
+              <p className="text-3xl font-bold tnum">{campusData?.overview?.totalClubs ?? 0}</p>
               <p className="text-xs text-muted-foreground">Active accredited student chapters</p>
             </Card>
 
@@ -311,7 +508,7 @@ export const AdminPage: React.FC = () => {
                 <span className="text-xs font-semibold uppercase tracking-wider">Campus Check-ins</span>
                 <TrendingUp className="h-4 w-4 text-emerald-500" />
               </div>
-              <p className="text-3xl font-bold tnum">{(campusData?.totalCheckIns as number) || 1420}</p>
+              <p className="text-3xl font-bold tnum">{campusData?.overview?.totalCheckedIn ?? 0}</p>
               <p className="text-xs text-muted-foreground">Verified gate entries across all events</p>
             </Card>
 
@@ -320,7 +517,7 @@ export const AdminPage: React.FC = () => {
                 <span className="text-xs font-semibold uppercase tracking-wider">Conflict Engine</span>
                 <AlertCircle className="h-4 w-4 text-amber-500" />
               </div>
-              <p className="text-sm text-emerald-600 dark:text-emerald-400 font-medium pt-1">
+              <p className="text-sm text-emerald-700 dark:text-emerald-300 font-medium pt-1">
                 0 venue or audio-visual collisions detected.
               </p>
               <p className="text-xs text-muted-foreground">Continuous spatial & resource scheduling guard</p>
@@ -425,14 +622,16 @@ export const AdminPage: React.FC = () => {
                         Loading campus members...
                       </td>
                     </tr>
-                  ) : usersData?.users.length === 0 ? (
+                  ) : (usersData?.users || []).filter((u) => u.id !== '00000000-0000-0000-0000-000000000000').length === 0 ? (
                     <tr>
                       <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
                         No members found matching the criteria.
                       </td>
                     </tr>
                   ) : (
-                    usersData?.users.map((u) => (
+                    (usersData?.users || [])
+                      .filter((u) => u.id !== '00000000-0000-0000-0000-000000000000')
+                      .map((u) => (
                       <tr key={u.id} className="hover:bg-muted/20">
                         <td className="px-4 py-3">
                           <div className="font-medium text-foreground">{u.fullName}</div>
@@ -621,7 +820,7 @@ export const AdminPage: React.FC = () => {
             <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3">
               <div>
                 <CardTitle className="text-base flex items-center gap-2">
-                  <ShieldAlert className="h-5 w-5 text-indigo-500" />
+                  <ShieldAlert className="h-5 w-5 text-teal-600 dark:text-teal-400" />
                   Immutable System Security Log
                 </CardTitle>
                 <CardDescription>
@@ -734,6 +933,114 @@ export const AdminPage: React.FC = () => {
 
         {/* 5. Dead-Letter Queue (DLQ) Tab */}
         <TabsContent value="deadletter" className="space-y-4">
+          {/* Provider Health & Config Status */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Card className="p-4 border-border/80 bg-muted/20">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Mail className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-semibold">Email Channel (Resend)</span>
+                </div>
+                <Badge variant={providerHealth?.email.isConfigured ? 'default' : 'secondary'}>
+                  {providerHealth?.email.isConfigured ? 'Configured' : 'Console Mode'}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Sender: <span className="font-mono">{providerHealth?.email.sender || 'events@eventora.campus.edu'}</span>
+              </p>
+              <div className="grid grid-cols-4 gap-2 mt-3 pt-3 border-t border-border/60 text-center">
+                <div>
+                  <div className="text-xs text-muted-foreground">Queued</div>
+                  <div className="font-bold text-sm">{commsStats?.email?.queued ?? 0}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Sent</div>
+                  <div className="font-bold text-sm text-emerald-600">{commsStats?.email?.sent ?? 0}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Delivered</div>
+                  <div className="font-bold text-sm text-blue-600">{commsStats?.email?.delivered ?? 0}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Failed</div>
+                  <div className="font-bold text-sm text-rose-600">{commsStats?.email?.failed ?? 0}</div>
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-4 border-border/80 bg-muted/20">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4 text-emerald-600" />
+                  <span className="text-sm font-semibold">WhatsApp Cloud API (Meta)</span>
+                </div>
+                <Badge variant={providerHealth?.whatsapp.isConfigured ? 'default' : 'secondary'}>
+                  {providerHealth?.whatsapp.isConfigured ? 'Meta Cloud API' : 'Console Mode'}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                API Version: <span className="font-mono">{providerHealth?.whatsapp.apiVersion || 'v21.0'}</span> • Webhook: <span className="font-mono">{providerHealth?.whatsapp.webhookVerified ? 'Verified' : 'Ready'}</span>
+              </p>
+              <div className="grid grid-cols-5 gap-2 mt-3 pt-3 border-t border-border/60 text-center">
+                <div>
+                  <div className="text-[11px] text-muted-foreground">Queued</div>
+                  <div className="font-bold text-sm">{commsStats?.whatsapp?.queued ?? 0}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-muted-foreground">Accepted</div>
+                  <div className="font-bold text-sm text-amber-600">{commsStats?.whatsapp?.accepted ?? 0}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-muted-foreground">Delivered</div>
+                  <div className="font-bold text-sm text-emerald-600">{commsStats?.whatsapp?.delivered ?? 0}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-muted-foreground">Read</div>
+                  <div className="font-bold text-sm text-blue-600">{commsStats?.whatsapp?.read ?? 0}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-muted-foreground">Failed</div>
+                  <div className="font-bold text-sm text-rose-600">{commsStats?.whatsapp?.failed ?? 0}</div>
+                </div>
+              </div>
+            </Card>
+          </div>
+
+          {/* Quick Engine Queue Health Stats */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Card className="p-4 border-border/80">
+              <div className="text-xs font-medium text-muted-foreground">Queued Dispatches</div>
+              <div className="text-2xl font-bold mt-1 text-amber-600 dark:text-amber-400">
+                {commsStats?.queued ?? 0}
+              </div>
+              <div className="text-[11px] text-muted-foreground mt-0.5">Awaiting worker pickup</div>
+            </Card>
+
+            <Card className="p-4 border-border/80">
+              <div className="text-xs font-medium text-muted-foreground">Delivered / Accepted</div>
+              <div className="text-2xl font-bold mt-1 text-emerald-600 dark:text-emerald-400">
+                {commsStats?.sent ?? 0}
+              </div>
+              <div className="text-[11px] text-muted-foreground mt-0.5">Outbound dispatches</div>
+            </Card>
+
+            <Card className="p-4 border-border/80">
+              <div className="text-xs font-medium text-muted-foreground">In-App Notices Read</div>
+              <div className="text-2xl font-bold mt-1 text-teal-600 dark:text-teal-400">
+                {commsStats?.read ?? 0}
+              </div>
+              <div className="text-[11px] text-muted-foreground mt-0.5">Total created: {commsStats?.inApp?.created ?? 0}</div>
+            </Card>
+
+            <Card className="p-4 border-border/80">
+              <div className="text-xs font-medium text-muted-foreground">Dead-Letter / Failed</div>
+              <div className="text-2xl font-bold mt-1 text-rose-600 dark:text-rose-400">
+                {commsStats?.dlq ?? 0}
+              </div>
+              <div className="text-[11px] text-muted-foreground mt-0.5">Exhausted retry threshold</div>
+            </Card>
+          </div>
+
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-3">
               <div>
@@ -745,7 +1052,16 @@ export const AdminPage: React.FC = () => {
                   Notifications that encountered delivery failures after maximum background retries.
                 </CardDescription>
               </div>
-              <Button variant="outline" size="sm" onClick={() => refetchDlq()} className="gap-1.5">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  refetchDlq();
+                  refetchCommsStats();
+                  refetchProviders();
+                }}
+                className="gap-1.5"
+              >
                 <RefreshCw className="h-3.5 w-3.5" />
                 Refresh
               </Button>
@@ -812,7 +1128,277 @@ export const AdminPage: React.FC = () => {
             </div>
           </Card>
         </TabsContent>
-      </Tabs>
+
+        {/* 6. Volunteer Field Operations Tab */}
+        <TabsContent value="volunteers" className="space-y-6">
+          <Card className="border-border">
+            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4">
+              <div>
+                <CardTitle className="text-base font-semibold">Campus Volunteers & Gate Duty</CardTitle>
+                <CardDescription className="text-xs">
+                  Assign student volunteers to events, configure access gates, and monitor check-in scan activity.
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setCreatedVolunteerToken(null);
+                    setIsInviteModalOpen(true);
+                  }}
+                  className="gap-1.5 h-8 text-xs"
+                  data-testid="btn-assign-volunteer"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Assign Volunteer
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => refetchVolunteers()}
+                  className="h-8 w-8 p-0"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    placeholder="Search volunteers by name, email, roll, gate..."
+                    value={volunteerSearch}
+                    onChange={(e) => setVolunteerSearch(e.target.value)}
+                    className="pl-8 h-8 text-xs"
+                  />
+                </div>
+                <Select value={volunteerStatusFilter} onValueChange={setVolunteerStatusFilter}>
+                  <SelectTrigger className="w-full sm:w-44 h-8 text-xs">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">All Statuses</SelectItem>
+                    <SelectItem value="ACTIVE">Active Only</SelectItem>
+                    <SelectItem value="REVOKED">Revoked</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="border rounded-xl overflow-hidden">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-muted/50 border-b text-muted-foreground font-semibold">
+                    <tr>
+                      <th className="px-4 py-3">Volunteer</th>
+                      <th className="px-4 py-3">Event</th>
+                      <th className="px-4 py-3">Duty Station</th>
+                      <th className="px-4 py-3">Scans</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {isVolunteerLoading ? (
+                      <tr>
+                        <td colSpan={6} className="text-center py-8 text-muted-foreground">
+                          Loading volunteers directory...
+                        </td>
+                      </tr>
+                    ) : (volunteerData?.items?.length ?? 0) === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="text-center py-8 text-muted-foreground">
+                          No volunteer duty assignments found. Click "Assign Volunteer" to provision one.
+                        </td>
+                      </tr>
+                    ) : (
+                      volunteerData?.items?.map((vol) => (
+                        <tr key={vol.id} className="hover:bg-muted/30">
+                          <td className="px-4 py-3">
+                            <span className="font-semibold block">{vol.fullName}</span>
+                            <span className="text-muted-foreground text-[11px] font-mono">
+                              {vol.rollNumber ? `${vol.rollNumber} · ` : ''}{vol.email}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="font-medium block">{vol.eventTitle}</span>
+                            <span className="text-muted-foreground text-[11px] font-mono">{vol.eventSlug}</span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-1.5">
+                              <DoorOpen className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
+                              <span className="font-medium">{vol.gate}</span>
+                            </div>
+                            <span className="text-muted-foreground text-[11px]">Role: {vol.role}</span>
+                          </td>
+                          <td className="px-4 py-3 font-mono font-semibold">
+                            {vol.totalScans}
+                          </td>
+                          <td className="px-4 py-3">
+                            <Badge
+                              variant={vol.status === 'ACTIVE' ? 'default' : 'secondary'}
+                              className={vol.status === 'ACTIVE' ? 'bg-emerald-600 text-white' : ''}
+                            >
+                              {vol.status}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            {vol.status === 'ACTIVE' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => revokeVolunteerMutation.mutate(vol.id)}
+                                disabled={revokeVolunteerMutation.isPending}
+                                className="text-rose-500 hover:text-rose-600 h-7 text-xs"
+                              >
+                                Revoke
+                              </Button>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Assign Volunteer Dialog */}
+          <Dialog open={isInviteModalOpen} onOpenChange={setIsInviteModalOpen}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Assign Campus Volunteer</DialogTitle>
+                <DialogDescription className="text-xs">
+                  Provision event duty station and generate immediate activation code.
+                </DialogDescription>
+              </DialogHeader>
+
+              {createdVolunteerToken ? (
+                <div className="space-y-4 py-3">
+                  <div className="p-4 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-800 rounded-xl space-y-2 text-center">
+                    <CheckCircle2 className="h-8 w-8 text-emerald-600 mx-auto" />
+                    <h3 className="font-bold text-sm text-emerald-900 dark:text-emerald-200">
+                      Volunteer Assigned Successfully!
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      Share this activation code with the student to unlock scanning:
+                    </p>
+                    <div className="p-3 bg-background border rounded-lg font-mono font-extrabold text-xl text-emerald-600 dark:text-emerald-400 tracking-wider">
+                      {createdVolunteerToken}
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={async () => {
+                        await copyToClipboard(createdVolunteerToken);
+                        setHasCopiedVolToken(true);
+                        setTimeout(() => setHasCopiedVolToken(false), 2000);
+                      }}
+                      className="gap-1.5 w-full text-xs"
+                    >
+                      {hasCopiedVolToken ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                      {hasCopiedVolToken ? 'Copied to Clipboard' : 'Copy Activation Code'}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3 py-2 text-xs">
+                  <div className="space-y-1">
+                    <Label htmlFor="vol-event-id">Target Event ID</Label>
+                    <Input
+                      id="vol-event-id"
+                      placeholder="UUID of target event"
+                      value={newVolEventId}
+                      onChange={(e) => setNewVolEventId(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="vol-name">Student Full Name</Label>
+                    <Input
+                      id="vol-name"
+                      placeholder="e.g. Alex Rivera"
+                      value={newVolName}
+                      onChange={(e) => setNewVolName(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="vol-email">Email Address</Label>
+                    <Input
+                      id="vol-email"
+                      type="email"
+                      placeholder="alex.rivera@campus.edu"
+                      value={newVolEmail}
+                      onChange={(e) => setNewVolEmail(e.target.value)}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label htmlFor="vol-roll">Roll Number (Optional)</Label>
+                      <Input
+                        id="vol-roll"
+                        placeholder="e.g. 21CS099"
+                        value={newVolRoll}
+                        onChange={(e) => setNewVolRoll(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="vol-gate">Duty Gate</Label>
+                      <Input
+                        id="vol-gate"
+                        placeholder="e.g. North Gate"
+                        value={newVolGate}
+                        onChange={(e) => setNewVolGate(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="vol-role">Operational Role</Label>
+                    <Select value={newVolRole} onValueChange={setNewVolRole}>
+                      <SelectTrigger id="vol-role" className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="SCANNER">Ticket Scanner</SelectItem>
+                        <SelectItem value="REGISTRATION">Registration Desk</SelectItem>
+                        <SelectItem value="CROWD_CONTROL">Crowd Control</SelectItem>
+                        <SelectItem value="HELP_DESK">Help Desk</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="vol-notes">Instructions / Notes</Label>
+                    <Input
+                      id="vol-notes"
+                      placeholder="e.g. Report to Gate 2 by 8:30 AM"
+                      value={newVolNotes}
+                      onChange={(e) => setNewVolNotes(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsInviteModalOpen(false)}
+                >
+                  {createdVolunteerToken ? 'Done' : 'Cancel'}
+                </Button>
+                {!createdVolunteerToken && (
+                  <Button
+                    size="sm"
+                    onClick={() => inviteVolunteerMutation.mutate()}
+                    disabled={!newVolEventId.trim() || !newVolEmail.trim() || !newVolName.trim() || inviteVolunteerMutation.isPending}
+                  >
+                    Assign Volunteer
+                  </Button>
+                )}
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </TabsContent>
+        </Tabs>
     </div>
   );
 };

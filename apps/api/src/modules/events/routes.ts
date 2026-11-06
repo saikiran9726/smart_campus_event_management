@@ -1,15 +1,15 @@
-import { and, asc, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, lte, sql } from 'drizzle-orm';
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { EventStatus, UserRole } from '@eventora/shared';
+import { DEFAULT_PROJECT_SUBMISSION_CONFIG, EventStatus, ProjectSubmissionConfig, UserRole } from '@eventora/shared';
 import { db } from '../../db/client';
-import { clubs, events, registrations, teams, users, venues, waitlistEntries, winners } from '../../db/schema';
+import { clubs, events, registrations, teams, tickets, users, venues, waitlistEntries, winners } from '../../db/schema';
 import { AppError } from '../../lib/app-error';
 import { requireClubRole, requireEventOrganizer } from '../../middleware/rbac';
-import { requireAuth } from '../../plugins/auth';
+import { optionalAuth, requireAuth } from '../../plugins/auth';
 import { emitSeats } from '../../realtime/io';
 import { ensureEventDoubtRoom, postEventCardToFeed } from '../channels/event-feed';
 import { getLiveWaitlistPosition } from '../waitlist/service';
-
+import { publicUrl } from '../../lib/r2';
 export function computeSeatLabel(remainingCapacity: number, waitlistCount = 0): string {
   if (remainingCapacity > 0) {
     return `${remainingCapacity} seats left`;
@@ -27,6 +27,10 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
 
       if (!body.clubId || !body.title || !body.startAt || !body.endAt || body.capacity === undefined) {
         throw new AppError('VALIDATION_FAILED', 'Missing required event fields.', 400);
+      }
+
+      if (body.agenda !== undefined && !Array.isArray(body.agenda)) {
+        throw new AppError('VALIDATION_FAILED', 'Agenda must be an array of sessions.', 400);
       }
 
       // Check permissions: user must be club owner/admin or system admin
@@ -61,6 +65,7 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
           title: body.title,
           slug,
           description: body.description || '',
+          agenda: body.agenda ?? [],
           category: body.category || 'General',
           posterKey: body.posterKey || null,
           venueId: body.venueId || null,
@@ -74,8 +79,14 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
           pricePaise,
           isPaid: pricePaise > 0,
           isCompetition: Boolean(body.isCompetition),
+          registrationMode: body.registrationMode || (body.isCompetition ? 'BOTH' : 'INDIVIDUAL'),
+          teamPaymentPolicy: body.teamPaymentPolicy || 'PER_MEMBER',
+          allowMemberReplacement: body.allowMemberReplacement !== undefined ? Boolean(body.allowMemberReplacement) : true,
+          allowLateJoining: body.allowLateJoining !== undefined ? Boolean(body.allowLateJoining) : true,
           minTeamSize: body.minTeamSize || (body.isCompetition ? 2 : 1),
           maxTeamSize: body.maxTeamSize || (body.isCompetition ? 4 : 1),
+          submissionDeadlineAt: body.submissionDeadlineAt ? new Date(body.submissionDeadlineAt) : null,
+          projectSubmissionConfig: body.projectSubmissionConfig ?? DEFAULT_PROJECT_SUBMISSION_CONFIG,
           createdBy: request.user!.id,
         })
         .returning();
@@ -158,6 +169,13 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
         updatedAt: new Date(),
       };
 
+      if (body.agenda !== undefined) {
+        if (!Array.isArray(body.agenda)) {
+          throw new AppError('VALIDATION_FAILED', 'Agenda must be an array of sessions.', 400);
+        }
+        updateData.agenda = body.agenda;
+      }
+
       if (body.title !== undefined) updateData.title = body.title;
       if (body.description !== undefined) updateData.description = body.description;
       if (body.category !== undefined) updateData.category = body.category;
@@ -168,6 +186,17 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
       if (body.pricePaise !== undefined) {
         updateData.pricePaise = Number(body.pricePaise);
         updateData.isPaid = Number(body.pricePaise) > 0;
+      }
+      if (body.registrationMode !== undefined) updateData.registrationMode = body.registrationMode;
+      if (body.teamPaymentPolicy !== undefined) updateData.teamPaymentPolicy = body.teamPaymentPolicy;
+      if (body.allowMemberReplacement !== undefined) updateData.allowMemberReplacement = Boolean(body.allowMemberReplacement);
+      if (body.allowLateJoining !== undefined) updateData.allowLateJoining = Boolean(body.allowLateJoining);
+      if (body.minTeamSize !== undefined) updateData.minTeamSize = Number(body.minTeamSize);
+      if (body.maxTeamSize !== undefined) updateData.maxTeamSize = Number(body.maxTeamSize);
+      if (body.isCompetition !== undefined) updateData.isCompetition = Boolean(body.isCompetition);
+      if (body.projectSubmissionConfig !== undefined) updateData.projectSubmissionConfig = body.projectSubmissionConfig;
+      if (body.submissionDeadlineAt !== undefined) {
+        updateData.submissionDeadlineAt = body.submissionDeadlineAt ? new Date(body.submissionDeadlineAt) : null;
       }
 
       if (body.capacity !== undefined) {
@@ -295,6 +324,7 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
         category: events.category,
         posterKey: events.posterKey,
         venueId: events.venueId,
+        venue: venues.name,
         venueName: venues.name,
         startAt: events.startAt,
         endAt: events.endAt,
@@ -306,6 +336,8 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
         isCompetition: events.isCompetition,
         minTeamSize: events.minTeamSize,
         maxTeamSize: events.maxTeamSize,
+        submissionDeadlineAt: events.submissionDeadlineAt,
+        projectSubmissionConfig: events.projectSubmissionConfig,
         createdAt: events.createdAt,
       })
       .from(events)
@@ -326,108 +358,158 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
 
     const enrichedItems = items.map((ev) => ({
       ...ev,
+      posterUrl: ev.posterKey ? publicUrl(ev.posterKey) : null,
       seatLabel: computeSeatLabel(ev.remainingCapacity),
     }));
-
     return reply.status(200).send({
       items: enrichedItems,
       nextCursor,
     });
   });
 
-  // 6. Public Get Event by Slug
-  server.get('/events/:slug', async (request: FastifyRequest, reply: FastifyReply) => {
-    const { slug } = request.params as { slug: string };
+  // 6. Public Get Event by ID or Slug (with optional auth to detect user's registration state)
+  server.get(
+    '/events/:slug',
+    { preHandler: [optionalAuth] },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { slug } = request.params as { slug: string };
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slug);
 
-    const [event] = await db
-      .select({
-        id: events.id,
-        clubId: events.clubId,
-        clubName: clubs.name,
-        title: events.title,
-        slug: events.slug,
-        description: events.description,
-        category: events.category,
-        posterKey: events.posterKey,
-        venueId: events.venueId,
-        venueName: venues.name,
-        venueLocation: venues.locationText,
-        startAt: events.startAt,
-        endAt: events.endAt,
-        registrationOpensAt: events.registrationOpensAt,
-        registrationClosesAt: events.registrationClosesAt,
-        status: events.status,
-        capacity: events.capacity,
-        remainingCapacity: events.remainingCapacity,
-        pricePaise: events.pricePaise,
-        isPaid: events.isPaid,
-        isCompetition: events.isCompetition,
-        minTeamSize: events.minTeamSize,
-        maxTeamSize: events.maxTeamSize,
-        formFrozenAt: events.formFrozenAt,
-        checkinClosedAt: events.checkinClosedAt,
-        createdAt: events.createdAt,
-      })
-      .from(events)
-      .leftJoin(clubs, eq(events.clubId, clubs.id))
-      .leftJoin(venues, eq(events.venueId, venues.id))
-      .where(eq(events.slug, slug))
-      .limit(1);
-
-    if (!event) {
-      throw new AppError('NOT_FOUND', `Event '${slug}' not found.`, 404);
-    }
-
-    const eventWinners = await db
-      .select({
-        rank: winners.rank,
-        teamId: winners.teamId,
-        teamName: teams.name,
-      })
-      .from(winners)
-      .leftJoin(teams, eq(winners.teamId, teams.id))
-      .where(eq(winners.eventId, event.id))
-      .orderBy(asc(winners.rank));
-
-    let userWaitlistPosition: number | null = null;
-    let userRegistration: { id: string; status: string; waitlistPosition?: number } | null = null;
-    if (request.user?.id) {
-      const [reg] = await db
-        .select({ id: registrations.id, status: registrations.status })
-        .from(registrations)
-        .where(and(eq(registrations.eventId, event.id), eq(registrations.userId, request.user.id)))
+      const [event] = await db
+        .select({
+          id: events.id,
+          clubId: events.clubId,
+          clubName: clubs.name,
+          title: events.title,
+          slug: events.slug,
+          description: events.description,
+          agenda: events.agenda,
+          category: events.category,
+          posterKey: events.posterKey,
+          venueId: events.venueId,
+          venue: venues.name,
+          venueName: venues.name,
+          venueLocation: venues.locationText,
+          startAt: events.startAt,
+          endAt: events.endAt,
+          registrationOpensAt: events.registrationOpensAt,
+          registrationClosesAt: events.registrationClosesAt,
+          status: events.status,
+          capacity: events.capacity,
+          remainingCapacity: events.remainingCapacity,
+          pricePaise: events.pricePaise,
+          isPaid: events.isPaid,
+          isCompetition: events.isCompetition,
+          minTeamSize: events.minTeamSize,
+          maxTeamSize: events.maxTeamSize,
+          submissionDeadlineAt: events.submissionDeadlineAt,
+          projectSubmissionConfig: events.projectSubmissionConfig,
+          formFrozenAt: events.formFrozenAt,
+          checkinClosedAt: events.checkinClosedAt,
+          createdAt: events.createdAt,
+        })
+        .from(events)
+        .leftJoin(clubs, eq(events.clubId, clubs.id))
+        .leftJoin(venues, eq(events.venueId, venues.id))
+        .where(isUuid ? eq(events.id, slug) : eq(events.slug, slug))
         .limit(1);
 
-      if (reg) {
-        if (reg.status === 'WAITLISTED') {
-          const wl = await getLiveWaitlistPosition(request.user.id, event.id);
-          if (wl.position) {
-            userWaitlistPosition = wl.position;
-          }
-        }
-        userRegistration = {
-          id: reg.id,
-          status: reg.status,
-          waitlistPosition: userWaitlistPosition ?? undefined,
-        };
+      if (!event) {
+        throw new AppError('NOT_FOUND', `Event '${slug}' not found.`, 404);
       }
-    }
 
-    return reply.status(200).send({
-      event: {
-        ...event,
-        winners: eventWinners.map((w) => ({
-          rank: w.rank,
-          teamName: w.teamName || `Rank ${w.rank}`,
-          projectTitle: w.teamName || 'Finalist Project',
-          abstract: 'Recognized achievement on the winners podium.',
-          members: [],
-          prize: w.rank === 1 ? '1st Place' : w.rank === 2 ? '2nd Place' : '3rd Place',
-        })),
-        seatLabel: computeSeatLabel(event.remainingCapacity),
-        userWaitlistPosition,
-        userRegistration,
-      },
-    });
-  });
+      const eventWinners = await db
+        .select({
+          rank: winners.rank,
+          teamId: winners.teamId,
+          teamName: teams.name,
+        })
+        .from(winners)
+        .leftJoin(teams, eq(winners.teamId, teams.id))
+        .where(eq(winners.eventId, event.id))
+        .orderBy(asc(winners.rank));
+
+      let userWaitlistPosition: number | null = null;
+      let userRegistration: {
+        id: string;
+        status: string;
+        paymentStatus?: string;
+        amountPaise?: number;
+        offerExpiresAt?: string | null;
+        waitlistPosition?: number;
+        ticket?: {
+          id: string;
+          status: string;
+          checkedInAt?: string | null;
+        } | null;
+      } | null = null;
+
+      if (request.user?.id) {
+        const userRegs = await db
+          .select({
+            id: registrations.id,
+            status: registrations.status,
+            paymentStatus: registrations.paymentStatus,
+            amountPaise: registrations.amountPaise,
+            offerExpiresAt: registrations.offerExpiresAt,
+            ticketId: tickets.id,
+            ticketStatus: tickets.status,
+            ticketCheckedInAt: tickets.checkedInAt,
+          })
+          .from(registrations)
+          .leftJoin(tickets, eq(tickets.registrationId, registrations.id))
+          .where(and(eq(registrations.eventId, event.id), eq(registrations.userId, request.user.id)))
+          .orderBy(
+            sql`CASE
+              WHEN ${registrations.status} IN ('CONFIRMED', 'WAITLISTED', 'OFFERED') THEN 1
+              ELSE 2
+            END`,
+            desc(registrations.createdAt)
+          )
+          .limit(1);
+
+        const reg = userRegs[0];
+        if (reg) {
+          if (reg.status === 'WAITLISTED') {
+            const wl = await getLiveWaitlistPosition(request.user.id, event.id);
+            if (wl.position) {
+              userWaitlistPosition = wl.position;
+            }
+          }
+          userRegistration = {
+            id: reg.id,
+            status: reg.status,
+            paymentStatus: reg.paymentStatus,
+            amountPaise: reg.amountPaise,
+            offerExpiresAt: reg.offerExpiresAt ? reg.offerExpiresAt.toISOString() : null,
+            waitlistPosition: userWaitlistPosition ?? undefined,
+            ticket: reg.ticketId
+              ? {
+                  id: reg.ticketId,
+                  status: reg.ticketStatus!,
+                  checkedInAt: reg.ticketCheckedInAt ? reg.ticketCheckedInAt.toISOString() : null,
+                }
+              : null,
+          };
+        }
+      }
+
+      return reply.status(200).send({
+        event: {
+          ...event,
+          winners: eventWinners.map((w) => ({
+            rank: w.rank,
+            teamName: w.teamName || `Rank ${w.rank}`,
+            projectTitle: w.teamName || 'Finalist Project',
+            abstract: 'Recognized achievement on the winners podium.',
+            members: [],
+            prize: w.rank === 1 ? '1st Place' : w.rank === 2 ? '2nd Place' : '3rd Place',
+          })),
+          seatLabel: computeSeatLabel(event.remainingCapacity),
+          userWaitlistPosition,
+          userRegistration,
+        },
+      });
+    }
+  );
 }

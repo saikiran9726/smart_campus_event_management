@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Hackathon Lifecycle: Team Formation, Capacity Lock & Snapshot', () => {
-  const API_URL = 'http://localhost:3001';
+  const API_URL = process.env.API_URL || 'http://localhost:4000';
 
   test('leader creates team, 3 join with code, 5th rejected by max size (4), lock creates snapshot, joins afterwards fail', async ({
     request,
@@ -44,7 +44,7 @@ test.describe('Hackathon Lifecycle: Team Formation, Capacity Lock & Snapshot', (
     });
     expect(teamRes.status()).toBe(201);
     const { team, inviteCode } = await teamRes.json();
-    expect(inviteCode).toHaveLength(6);
+    expect(inviteCode).toHaveLength(8);
     const teamId = team.id;
 
     // 3. Three teammates join with the code

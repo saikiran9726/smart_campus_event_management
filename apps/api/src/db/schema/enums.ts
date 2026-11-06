@@ -79,6 +79,11 @@ export const questionTypeEnum = pgEnum('question_type', [
   QuestionType.CHECKBOX,
   QuestionType.DATE,
   QuestionType.FILE_UPLOAD,
+  QuestionType.DROPDOWN,
+  QuestionType.RADIO,
+  QuestionType.URL,
+  QuestionType.YES_NO,
+  QuestionType.INSTRUCTION,
 ]);
 
 export const scanModeEnum = pgEnum('scan_mode', [
@@ -103,6 +108,7 @@ export const channelKindEnum = pgEnum('channel_kind', [
 export const notificationChannelEnum = pgEnum('notification_channel', [
   NotificationChannel.EMAIL,
   NotificationChannel.WHATSAPP,
+  NotificationChannel.IN_APP,
 ]);
 
 export const notificationKindEnum = pgEnum('notification_kind', [
@@ -112,6 +118,13 @@ export const notificationKindEnum = pgEnum('notification_kind', [
   NotificationKind.WAITLIST_OFFER,
   NotificationKind.FACULTY_APPROVAL,
   NotificationKind.STRIKE_NOTICE,
+  NotificationKind.REGISTRATION_APPROVED,
+  NotificationKind.REGISTRATION_REJECTED,
+  NotificationKind.PAYMENT_SUCCESS,
+  NotificationKind.PAYMENT_FAILED,
+  NotificationKind.TEAM_INVITATION,
+  NotificationKind.REGISTRATION_CANCELLED,
+  NotificationKind.ORGANIZER_ALERT,
 ]);
 
 export const teamStatusEnum = pgEnum('team_status', [

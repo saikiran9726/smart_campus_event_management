@@ -2,13 +2,13 @@ import { FastifyReply, FastifyRequest } from 'fastify';
 import { and, eq } from 'drizzle-orm';
 import { ClubMemberRole, UserRole } from '@eventora/shared';
 import { db } from '../../db/client';
-import { clubMembers, events } from '../../db/schema';
+import { clubMembers, events, eventVolunteers } from '../../db/schema';
 import { AppError } from '../../lib/app-error';
 import { authenticateRequest } from '../../plugins/auth';
 import { ScannerTokenPayload, verifyScannerToken } from './service';
 
 export interface ScannerPrincipal {
-  type: 'PASSKEY' | 'ORGANIZER';
+  type: 'PASSKEY' | 'ORGANIZER' | 'VOLUNTEER';
   sessionId?: string;
   passkeyId?: string;
   userId?: string;
@@ -56,9 +56,10 @@ export async function requireScanner(
             );
           }
           request.scanner = {
-            type: 'PASSKEY',
+            type: verified.userId ? 'VOLUNTEER' : 'PASSKEY',
             sessionId: verified.sessionId,
             passkeyId: verified.passkeyId,
+            userId: verified.userId,
             volunteerName: verified.volunteerName,
             label: verified.passkeyLabel,
             eventId: verified.eventId,
@@ -126,9 +127,37 @@ export async function requireScanner(
         membership.role === ClubMemberRole.ADMIN);
 
     if (!isOrganizer) {
+      const [volunteer] = await db
+        .select({
+          id: eventVolunteers.id,
+          gate: eventVolunteers.gate,
+          role: eventVolunteers.role,
+        })
+        .from(eventVolunteers)
+        .where(
+          and(
+            eq(eventVolunteers.eventId, targetEventId),
+            eq(eventVolunteers.userId, user.id),
+            eq(eventVolunteers.status, 'ACTIVE')
+          )
+        )
+        .limit(1);
+
+      if (volunteer) {
+        request.scanner = {
+          type: 'VOLUNTEER',
+          userId: user.id,
+          volunteerName: user.fullName,
+          label: `${volunteer.gate} (${volunteer.role})`,
+          eventId: targetEventId,
+        };
+        request.isScanner = true;
+        return;
+      }
+
       throw new AppError(
         'FORBIDDEN',
-        'You do not have organizer permissions to scan tickets for this event.',
+        'You do not have organizer or volunteer permissions to scan tickets for this event.',
         403
       );
     }

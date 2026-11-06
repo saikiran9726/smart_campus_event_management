@@ -85,6 +85,48 @@
       "when": 1793369100000,
       "tag": "0011_clubs_default_channels",
       "breakpoints": false
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793369200000,
+      "tag": "0012_event_volunteers_and_invitations",
+      "breakpoints": false
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793369300000,
+      "tag": "0013_form_versioning_and_student_profile",
+      "breakpoints": false
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1793369400000,
+      "tag": "0014_team_registration_settings",
+      "breakpoints": false
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1793375000000,
+      "tag": "0015_registration_approvals_and_cancellations",
+      "breakpoints": false
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1793376000000,
+      "tag": "0016_team_join_codes_and_tokens",
+      "breakpoints": false
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793377000000,
+      "tag": "0017_project_submission_system",
+      "breakpoints": false
     }
   ]
 }

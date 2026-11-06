@@ -8,6 +8,7 @@ import {
 import { db } from '../db/client';
 import {
   Notification,
+  notificationPreferences,
   notifications,
   registrations,
   tickets,
@@ -24,6 +25,7 @@ import {
 } from '../modules/comms/templates';
 import { EmailAttachment } from '../modules/comms/types';
 import { renderQrPng } from '../modules/tickets/service';
+import { normalizeIndianPhoneNumber } from '../modules/comms/phone';
 
 function calculateBackoffMs(attempt: number): number {
   if (attempt <= 1) return 60 * 1000; // 1 minute
@@ -87,16 +89,94 @@ export async function processCommsQueueOnce(): Promise<number> {
         continue;
       }
 
-      // 3. WhatsApp: Check for phone number (silent skip with status SENT and note NO_PHONE)
-      if (item.channel === NotificationChannel.WHATSAPP) {
-        if (!user.phone || !user.phone.trim()) {
+      // Check user preferences
+      const [userPrefs] = await db
+        .select()
+        .from(notificationPreferences)
+        .where(eq(notificationPreferences.userId, user.id))
+        .limit(1);
+
+      if (userPrefs) {
+        if (item.channel === NotificationChannel.EMAIL && userPrefs.emailEnabled === false) {
           await db
             .update(notifications)
             .set({
               status: 'SENT',
               sentAt: new Date(),
               attempts: currentAttempts + 1,
+              error: 'PREFERENCE_EMAIL_DISABLED',
+            })
+            .where(eq(notifications.id, item.id));
+          continue;
+        }
+
+        if (item.channel === NotificationChannel.WHATSAPP && userPrefs.whatsappEnabled === false) {
+          await db
+            .update(notifications)
+            .set({
+              status: 'SKIPPED',
+              sentAt: new Date(),
+              attempts: currentAttempts + 1,
+              error: 'PREFERENCE_WHATSAPP_DISABLED',
+            })
+            .where(eq(notifications.id, item.id));
+          continue;
+        }
+
+        if (
+          (item.kind === NotificationKind.REMINDER_24H || item.kind === NotificationKind.REMINDER_2H) &&
+          userPrefs.eventReminders === false
+        ) {
+          await db
+            .update(notifications)
+            .set({
+              status: 'SKIPPED',
+              sentAt: new Date(),
+              attempts: currentAttempts + 1,
+              error: 'PREFERENCE_REMINDERS_DISABLED',
+            })
+            .where(eq(notifications.id, item.id));
+          continue;
+        }
+
+        if (item.kind === NotificationKind.ORGANIZER_ALERT && userPrefs.announcements === false) {
+          await db
+            .update(notifications)
+            .set({
+              status: 'SKIPPED',
+              sentAt: new Date(),
+              attempts: currentAttempts + 1,
+              error: 'PREFERENCE_ANNOUNCEMENTS_DISABLED',
+            })
+            .where(eq(notifications.id, item.id));
+          continue;
+        }
+      }
+
+      // 3. WhatsApp: Check and validate Indian phone number
+      if (item.channel === NotificationChannel.WHATSAPP) {
+        if (!user.phone || !user.phone.trim()) {
+          await db
+            .update(notifications)
+            .set({
+              status: 'SKIPPED',
+              sentAt: new Date(),
+              attempts: currentAttempts + 1,
               error: 'NO_PHONE',
+            })
+            .where(eq(notifications.id, item.id));
+          continue;
+        }
+
+        const phoneValidation = normalizeIndianPhoneNumber(user.phone);
+        if (!phoneValidation.valid) {
+          await db
+            .update(notifications)
+            .set({
+              status: 'SKIPPED',
+              sentAt: new Date(),
+              attempts: currentAttempts + 1,
+              error: phoneValidation.error || 'INVALID_INDIAN_PHONE',
             })
             .where(eq(notifications.id, item.id));
           continue;
@@ -161,6 +241,7 @@ export async function processCommsQueueOnce(): Promise<number> {
 
       // 5. Dispatch based on channel
       let sendError: string | undefined;
+      let providerMessageId: string | undefined;
 
       if (item.channel === NotificationChannel.EMAIL) {
         const { subject, html } = renderEmail(item.kind, payload);
@@ -206,17 +287,20 @@ export async function processCommsQueueOnce(): Promise<number> {
         });
 
         sendError = emailResult.error;
+        providerMessageId = emailResult.id;
       } else if (item.channel === NotificationChannel.WHATSAPP) {
-        const { text, buttons, mediaUrl } = renderWhatsApp(item.kind, payload);
+        const { text, buttons, mediaUrl, template } = renderWhatsApp(item.kind, payload);
 
         const waResult = await getWhatsAppProvider().send({
           toPhone: user.phone!,
           text,
           buttons,
           mediaUrl,
+          template,
         });
 
         sendError = waResult.error;
+        providerMessageId = waResult.id;
       }
 
       // 6. Handle outcome (Success vs Failure with backoff)
@@ -246,11 +330,16 @@ export async function processCommsQueueOnce(): Promise<number> {
             .where(eq(notifications.id, item.id));
         }
       } else {
+        // Meta WhatsApp policy: status transitions to ACCEPTED on provider ACK,
+        // and only transitions to DELIVERED when the delivery webhook is received.
+        const finalStatus = item.channel === NotificationChannel.WHATSAPP ? 'ACCEPTED' : 'SENT';
+
         await db
           .update(notifications)
           .set({
-            status: 'SENT',
+            status: finalStatus,
             sentAt: new Date(),
+            providerMessageId: providerMessageId ?? null,
             attempts: currentAttempts + 1,
             error: null,
           })

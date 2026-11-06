@@ -138,7 +138,10 @@ export async function apiFetch<T = unknown>(
     }
 
     if (!token) {
-      const scannerToken = sessionStorage.getItem('eventora_scanner_token');
+      const scannerToken =
+        sessionStorage.getItem('eventora_scanner_token') ||
+        localStorage.getItem('eventora_scanner_token') ||
+        localStorage.getItem('scanner_token');
       if (scannerToken) {
         token = scannerToken;
       }
