@@ -123,6 +123,10 @@ export async function presignGet(
  * Constructs the public CDN URL for a given uploaded object key.
  */
 export function publicUrl(key: string): string {
+  if (!key) return '';
+  if (key.startsWith('http://') || key.startsWith('https://')) {
+    return key;
+  }
   const base = env.R2_PUBLIC_BASE_URL.replace(/\/+$/, '');
   const cleanKey = key.replace(/^\/+/, '');
   return `${base}/${cleanKey}`;

@@ -33,7 +33,26 @@ function resolveStorageCredentials() {
   };
 }
 
+function resolvePublicBaseUrl(): string {
+  const custom =
+    process.env.R2_PUBLIC_BASE_URL?.trim() ||
+    process.env.R2_PUBLIC_URL?.trim() ||
+    process.env.S3_PUBLIC_URL?.trim();
+  if (custom) return custom;
+
+  if (process.env.S3_ENDPOINT && process.env.S3_ENDPOINT.includes('supabase.co')) {
+    const bucket = process.env.R2_BUCKET?.trim() || 'eventora';
+    const publicOrigin = process.env.S3_ENDPOINT
+      .replace('.storage.supabase.co/storage/v1/s3', '.supabase.co')
+      .replace('.storage.supabase.co', '.supabase.co');
+    return `${publicOrigin.replace(/\/+$/, '')}/storage/v1/object/public/${bucket}`;
+  }
+
+  return 'https://assets.eventora.campus.edu';
+}
+
 const resolvedStorage = resolveStorageCredentials();
+const resolvedPublicBaseUrl = resolvePublicBaseUrl();
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -59,7 +78,7 @@ const envSchema = z.object({
   R2_ACCESS_KEY_ID: z.string().default(resolvedStorage.accessKeyId),
   R2_SECRET_ACCESS_KEY: z.string().default(resolvedStorage.secretAccessKey),
   R2_BUCKET: z.string().default('eventora-assets'),
-  R2_PUBLIC_BASE_URL: z.string().default('https://assets.eventora.campus.edu'),
+  R2_PUBLIC_BASE_URL: z.string().default(resolvedPublicBaseUrl),
 
   // Cloudflare Turnstile
   TURNSTILE_SECRET_KEY: z.string().default('1x0000000000000000000000000000000AA'),
