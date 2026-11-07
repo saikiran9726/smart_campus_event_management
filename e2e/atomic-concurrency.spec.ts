@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Atomic Concurrency: 1 Seat Race Condition', () => {
-  const API_URL = 'http://localhost:3001';
+  const API_URL = process.env.API_URL || 'http://localhost:4000';
 
   test('two concurrent users racing for 1 seat: exactly 1 CONFIRMED, 1 WAITLISTED #1, seat gauge shows 0 and CTA reads Join Queue', async ({
     browser,

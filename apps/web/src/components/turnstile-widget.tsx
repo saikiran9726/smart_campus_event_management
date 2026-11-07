@@ -38,13 +38,27 @@ export const TurnstileWidget: React.FC<TurnstileWidgetProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
+  const onSuccessRef = useRef(onSuccess);
+  const onErrorRef = useRef(onError);
+  const onExpireRef = useRef(onExpire);
 
-  const isTest = testMode || env.MODE === 'test' || typeof window !== 'undefined' && 'vitest' in window;
+  useEffect(() => {
+    onSuccessRef.current = onSuccess;
+    onErrorRef.current = onError;
+    onExpireRef.current = onExpire;
+  });
+
+  const isTest =
+    testMode ||
+    env.MODE === 'test' ||
+    (typeof process !== 'undefined' && (process.env?.NODE_ENV === 'test' || process.env?.VITEST === 'true')) ||
+    typeof (globalThis as any).vi !== 'undefined' ||
+    (typeof window !== 'undefined' && ('vitest' in window || '__vitest_worker__' in window || (window as any).isTestEnv));
 
   useEffect(() => {
     if (isTest) {
       // In test mode, immediately return deterministic token
-      onSuccess('test-pass');
+      onSuccessRef.current?.('test-pass');
       return;
     }
 
@@ -56,13 +70,13 @@ export const TurnstileWidget: React.FC<TurnstileWidgetProps> = ({
       widgetIdRef.current = window.turnstile.render(containerRef.current, {
         sitekey: env.VITE_TURNSTILE_SITE_KEY,
         callback: (token: string) => {
-          if (isMounted) onSuccess(token);
+          if (isMounted) onSuccessRef.current?.(token);
         },
         'error-callback': () => {
-          if (isMounted) onError?.();
+          if (isMounted) onErrorRef.current?.();
         },
         'expired-callback': () => {
-          if (isMounted) onExpire?.();
+          if (isMounted) onExpireRef.current?.();
         },
         theme: 'auto',
       });
@@ -104,7 +118,7 @@ export const TurnstileWidget: React.FC<TurnstileWidgetProps> = ({
         widgetIdRef.current = null;
       }
     };
-  }, [isTest, onSuccess, onError, onExpire]);
+  }, [isTest]);
 
   if (isTest) {
     return (

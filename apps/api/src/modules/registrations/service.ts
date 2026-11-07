@@ -14,6 +14,7 @@ import {
   ledgerEntries,
   notifications,
   payments,
+  projectSubmissions,
   Registration,
   registrations,
   Ticket,
@@ -21,21 +22,30 @@ import {
   User,
   waitlistEntries,
 } from '../../db/schema';
+import { ProjectSubmissionConfig } from '@eventora/shared';
 import { AppError } from '../../lib/app-error';
 import { assertNotInCooldown } from '../../middleware/rbac';
 import { emitSeats } from '../../realtime/io';
 import { freezeFormIfNeeded, submitAnswers } from '../forms/service';
+import { SubmitProjectInput, validateSubmissionAgainstConfig } from '../submissions/service';
 import {
   calculateWaitlistPosition,
   releaseSeat,
 } from '../waitlist/service';
-import { notifyBookingConfirmed } from '../comms/queue';
+import {
+  notifyBookingConfirmed,
+  notifyInApp,
+  notifyRegistrationApproved,
+  notifyRegistrationCancelled,
+  notifyRegistrationRejected,
+} from '../comms/queue';
 import { issueTicket } from './ticket-service';
 
 export interface RegisterForEventParams {
   eventId: string;
   user: User;
   answers: Record<string, unknown>;
+  projectSubmission?: SubmitProjectInput | null;
 }
 
 export interface RegisterResult {
@@ -58,7 +68,9 @@ export async function registerForEvent(
 
   let remainingAfterCommit: number | undefined;
 
-  const result = await withTx(async (tx) => {
+  let result: RegisterResult;
+  try {
+    result = await withTx(async (tx) => {
     // 2. Load event to check status, time windows, and competition constraints
     const [event] = await tx
       .select()
@@ -98,14 +110,46 @@ export async function registerForEvent(
       );
     }
 
-    // Direct team-only competitions to the team flow
-    if (event.isCompetition && (event.minTeamSize ?? 1) > 1) {
+    // Direct team-only events to the team flow
+    if (
+      event.registrationMode === 'TEAM' ||
+      (event.isCompetition && (event.minTeamSize ?? 1) > 1)
+    ) {
       throw new AppError(
         'VALIDATION_FAILED',
-        'This competition event requires team registration. Solo registrations are disallowed.',
+        'This event requires team registration. Solo registrations are disallowed.',
         400,
-        { isCompetition: true, minTeamSize: event.minTeamSize }
+        {
+          registrationMode: event.registrationMode,
+          isCompetition: event.isCompetition,
+          minTeamSize: event.minTeamSize,
+        }
       );
+    }
+
+    // Validate project submission if configured for DURING_REGISTRATION
+    const subConfig = event.projectSubmissionConfig as ProjectSubmissionConfig | null;
+    if (subConfig?.enabled && subConfig?.timing === 'DURING_REGISTRATION') {
+      const subInput = params.projectSubmission;
+      const hasSubmission = Boolean(
+        subInput &&
+          (subInput.projectTitle?.trim() ||
+            subInput.abstract?.trim() ||
+            subInput.repoUrl?.trim() ||
+            subInput.demoUrl?.trim())
+      );
+
+      if (subConfig.requirement === 'MANDATORY' && !hasSubmission) {
+        throw new AppError(
+          'VALIDATION_FAILED',
+          'Project submission is mandatory for this event during registration.',
+          400
+        );
+      }
+
+      if (hasSubmission) {
+        validateSubmissionAgainstConfig(subConfig, event, subInput!, false);
+      }
     }
 
     // Check for existing active registration (idempotent / duplicate rejection)
@@ -157,6 +201,7 @@ export async function registerForEvent(
 
       if (!event.isPaid || event.pricePaise === 0) {
         // Free Event -> Instantly CONFIRMED
+        const approvalStatus = event.approvalRequired ? 'PENDING' : 'APPROVED';
         const [reg] = await tx
           .insert(registrations)
           .values({
@@ -165,6 +210,8 @@ export async function registerForEvent(
             status: RegistrationStatus.CONFIRMED,
             paymentStatus: PaymentStatus.NOT_REQUIRED,
             amountPaise: 0,
+            formVersion: event.formVersion ?? 1,
+            approvalStatus,
           })
           .returning();
 
@@ -175,11 +222,49 @@ export async function registerForEvent(
           answers,
         });
 
-        // Issue ticket
-        const ticket = await issueTicket(tx, reg!);
+        // Save project submission if provided during registration
+        if (
+          params.projectSubmission &&
+          (params.projectSubmission.projectTitle?.trim() ||
+            params.projectSubmission.abstract?.trim() ||
+            params.projectSubmission.repoUrl?.trim() ||
+            params.projectSubmission.demoUrl?.trim())
+        ) {
+          const subNow = new Date();
+          await tx.insert(projectSubmissions).values({
+            eventId,
+            teamId: null,
+            userId: user.id,
+            registrationId: reg!.id,
+            projectTitle: params.projectSubmission.projectTitle?.trim() || null,
+            projectAbstract: params.projectSubmission.abstract?.trim() || null,
+            repoUrl: params.projectSubmission.repoUrl?.trim() || null,
+            demoUrl: params.projectSubmission.demoUrl?.trim() || null,
+            deckKey: params.projectSubmission.deckKey || null,
+            customFields: params.projectSubmission.customFields || {},
+            status: 'SUBMITTED',
+            createdAt: subNow,
+            updatedAt: subNow,
+          });
+        }
 
-        // Enqueue confirmation notifications (EMAIL and WHATSAPP)
-        await notifyBookingConfirmed(tx, reg!.id);
+        let ticket: Ticket | undefined;
+        if (approvalStatus === 'APPROVED') {
+          // Issue ticket
+          ticket = await issueTicket(tx, reg!);
+          // Enqueue confirmation notifications (EMAIL and WHATSAPP and IN_APP)
+          await notifyBookingConfirmed(tx, reg!.id);
+        } else {
+          // Notify that registration is pending organizer approval
+          await notifyInApp(tx, {
+            userId: user.id,
+            eventId,
+            kind: NotificationKind.BOOKING_CONFIRMED,
+            title: 'Registration Received (Pending Approval)',
+            message: `Your registration for "${event.title}" is pending organizer approval.`,
+            metadata: { registrationId: reg!.id, status: 'PENDING_APPROVAL' },
+          });
+        }
 
         return {
           outcome: 'CONFIRMED' as const,
@@ -196,6 +281,8 @@ export async function registerForEvent(
             status: RegistrationStatus.CONFIRMED,
             paymentStatus: PaymentStatus.PENDING,
             amountPaise: event.pricePaise,
+            formVersion: event.formVersion ?? 1,
+            approvalStatus: event.approvalRequired ? 'PENDING' : 'APPROVED',
           })
           .returning();
 
@@ -205,6 +292,32 @@ export async function registerForEvent(
           eventId,
           answers,
         });
+
+        // Save project submission if provided during registration
+        if (
+          params.projectSubmission &&
+          (params.projectSubmission.projectTitle?.trim() ||
+            params.projectSubmission.abstract?.trim() ||
+            params.projectSubmission.repoUrl?.trim() ||
+            params.projectSubmission.demoUrl?.trim())
+        ) {
+          const subNow = new Date();
+          await tx.insert(projectSubmissions).values({
+            eventId,
+            teamId: null,
+            userId: user.id,
+            registrationId: reg!.id,
+            projectTitle: params.projectSubmission.projectTitle?.trim() || null,
+            projectAbstract: params.projectSubmission.abstract?.trim() || null,
+            repoUrl: params.projectSubmission.repoUrl?.trim() || null,
+            demoUrl: params.projectSubmission.demoUrl?.trim() || null,
+            deckKey: params.projectSubmission.deckKey || null,
+            customFields: params.projectSubmission.customFields || {},
+            status: 'SUBMITTED',
+            createdAt: subNow,
+            updatedAt: subNow,
+          });
+        }
 
         return {
           outcome: 'PAYMENT_REQUIRED' as const,
@@ -223,6 +336,8 @@ export async function registerForEvent(
           status: RegistrationStatus.WAITLISTED,
           paymentStatus: PaymentStatus.NOT_REQUIRED,
           amountPaise: event.isPaid ? event.pricePaise : 0,
+          formVersion: event.formVersion ?? 1,
+          approvalStatus: event.approvalRequired ? 'PENDING' : 'APPROVED',
         })
         .returning();
 
@@ -270,6 +385,21 @@ export async function registerForEvent(
       };
     }
   });
+  } catch (err: any) {
+    if (
+      (err?.code === '23505' || err?.cause?.code === '23505') &&
+      (String(err?.constraint || err?.cause?.constraint || '').includes('registrations_event_user') ||
+       String(err?.message || '').includes('registrations_event_user_active_idx'))
+    ) {
+      throw new AppError(
+        'CONFLICT',
+        'You already have an active registration for this event.',
+        409,
+        { eventId, userId: user.id }
+      );
+    }
+    throw err;
+  }
 
   // 5. Emit real-time seats update after successful transaction commit
   if (remainingAfterCommit !== undefined) {
@@ -279,13 +409,20 @@ export async function registerForEvent(
   return result;
 }
 
+export interface CancelRegistrationOptions {
+  reason?: string;
+  isOrganizerOverride?: boolean;
+}
+
 /**
  * Cancels a user's registration, voids associated ticket, simulates refund if paid,
  * and releases the seat to the next waitlisted participant or general capacity.
+ * Enforces organizer-defined cancellation deadlines for student cancellations.
  */
 export async function cancelRegistration(
   user: User,
-  registrationId: string
+  registrationId: string,
+  options?: CancelRegistrationOptions
 ): Promise<{ success: boolean; message?: string }> {
   return withTx(async (tx) => {
     const [reg] = await tx
@@ -299,7 +436,11 @@ export async function cancelRegistration(
       throw new AppError('NOT_FOUND', 'Registration not found.', 404);
     }
 
-    if (reg.userId !== user.id && user.role !== UserRole.ADMIN) {
+    if (
+      !options?.isOrganizerOverride &&
+      reg.userId !== user.id &&
+      user.role !== UserRole.ADMIN
+    ) {
       throw new AppError(
         'FORBIDDEN',
         'You are not authorized to cancel this registration.',
@@ -311,13 +452,44 @@ export async function cancelRegistration(
       return { success: true, message: 'Registration is already cancelled.' };
     }
 
+    // Verify cancellation deadline for student cancellation requests
+    if (!options?.isOrganizerOverride && user.role !== UserRole.ADMIN) {
+      const [event] = await tx
+        .select({ cancellationDeadline: events.cancellationDeadline })
+        .from(events)
+        .where(eq(events.id, reg.eventId))
+        .limit(1);
+
+      if (
+        event?.cancellationDeadline &&
+        new Date() > new Date(event.cancellationDeadline)
+      ) {
+        throw new AppError(
+          'VALIDATION_FAILED',
+          'Cancellation deadline has passed for this event.',
+          400
+        );
+      }
+    }
+
     const previousStatus = reg.status;
+    const cancellationReason =
+      options?.reason ??
+      (options?.isOrganizerOverride
+        ? 'Cancelled by organizer'
+        : 'Cancelled by student');
 
     // Update registration to CANCELLED
     await tx
       .update(registrations)
       .set({
         status: RegistrationStatus.CANCELLED,
+        paymentStatus:
+          reg.paymentStatus === PaymentStatus.SUCCEEDED
+            ? PaymentStatus.REFUNDED
+            : reg.paymentStatus,
+        cancellationReason,
+        reviewedBy: options?.isOrganizerOverride ? user.id : reg.reviewedBy,
         cancelledAt: new Date(),
       })
       .where(eq(registrations.id, registrationId));
@@ -374,7 +546,186 @@ export async function cancelRegistration(
       await releaseSeat(tx, reg.eventId);
     }
 
+    // Send cancellation notification
+    await notifyRegistrationCancelled(tx, registrationId, cancellationReason);
+
     return { success: true };
+  });
+}
+
+/**
+ * Approves a registration requiring organizer review.
+ */
+export async function approveRegistration(
+  organizerUser: User,
+  eventId: string,
+  registrationId: string
+): Promise<{ success: boolean; registration: Registration; ticket?: Ticket }> {
+  return withTx(async (tx) => {
+    const [reg] = await tx
+      .select()
+      .from(registrations)
+      .where(
+        and(
+          eq(registrations.id, registrationId),
+          eq(registrations.eventId, eventId)
+        )
+      )
+      .limit(1)
+      .for('update');
+
+    if (!reg) {
+      throw new AppError('NOT_FOUND', 'Registration not found for this event.', 404);
+    }
+
+    if (reg.status === RegistrationStatus.CANCELLED) {
+      throw new AppError('CONFLICT', 'Cannot approve a cancelled registration.', 409);
+    }
+
+    const [updatedReg] = await tx
+      .update(registrations)
+      .set({
+        approvalStatus: 'APPROVED',
+        reviewedBy: organizerUser.id,
+        reviewedAt: new Date(),
+      })
+      .where(eq(registrations.id, registrationId))
+      .returning();
+
+    let ticket: Ticket | undefined;
+    // Issue ticket if registration is confirmed and payment is completed or not required
+    if (
+      updatedReg!.status === RegistrationStatus.CONFIRMED &&
+      (updatedReg!.paymentStatus === PaymentStatus.NOT_REQUIRED ||
+        updatedReg!.paymentStatus === PaymentStatus.SUCCEEDED)
+    ) {
+      const [existingTicket] = await tx
+        .select()
+        .from(tickets)
+        .where(eq(tickets.registrationId, registrationId))
+        .limit(1);
+
+      if (existingTicket) {
+        ticket = existingTicket;
+      } else {
+        ticket = await issueTicket(tx, updatedReg!);
+      }
+
+      await notifyBookingConfirmed(tx, registrationId);
+    }
+
+    await notifyRegistrationApproved(tx, registrationId, organizerUser.fullName);
+
+    return {
+      success: true,
+      registration: updatedReg!,
+      ticket,
+    };
+  });
+}
+
+/**
+ * Rejects an attendee registration with reason, voids ticket, refunds if paid, and releases seat.
+ */
+export async function rejectRegistration(
+  organizerUser: User,
+  eventId: string,
+  registrationId: string,
+  reason?: string
+): Promise<{ success: boolean; registration: Registration }> {
+  return withTx(async (tx) => {
+    const [reg] = await tx
+      .select()
+      .from(registrations)
+      .where(
+        and(
+          eq(registrations.id, registrationId),
+          eq(registrations.eventId, eventId)
+        )
+      )
+      .limit(1)
+      .for('update');
+
+    if (!reg) {
+      throw new AppError('NOT_FOUND', 'Registration not found for this event.', 404);
+    }
+
+    const previousStatus = reg.status;
+
+    // Void ticket if present
+    await tx
+      .update(tickets)
+      .set({ status: TicketStatus.VOID })
+      .where(eq(tickets.registrationId, registrationId));
+
+    // Handle refund if paid
+    if (
+      reg.paymentStatus === PaymentStatus.SUCCEEDED &&
+      reg.amountPaise > 0
+    ) {
+      const [payment] = await tx
+        .select()
+        .from(payments)
+        .where(eq(payments.registrationId, registrationId))
+        .orderBy(desc(payments.createdAt))
+        .limit(1);
+
+      if (payment) {
+        const [lastLedger] = await tx
+          .select({ balanceAfterPaise: ledgerEntries.balanceAfterPaise })
+          .from(ledgerEntries)
+          .where(eq(ledgerEntries.paymentId, payment.id))
+          .orderBy(desc(ledgerEntries.createdAt))
+          .limit(1);
+
+        const currentBalance = lastLedger?.balanceAfterPaise ?? payment.amountPaise;
+        const newBalance = currentBalance - payment.amountPaise;
+
+        await tx.insert(ledgerEntries).values({
+          paymentId: payment.id,
+          kind: 'REFUND',
+          amountPaise: -payment.amountPaise,
+          balanceAfterPaise: newBalance,
+        });
+
+        await tx
+          .update(payments)
+          .set({ status: PaymentStatus.REFUNDED })
+          .where(eq(payments.id, payment.id));
+      }
+    }
+
+    const [updatedReg] = await tx
+      .update(registrations)
+      .set({
+        status: RegistrationStatus.CANCELLED,
+        approvalStatus: 'REJECTED',
+        paymentStatus:
+          reg.paymentStatus === PaymentStatus.SUCCEEDED
+            ? PaymentStatus.REFUNDED
+            : reg.paymentStatus,
+        reviewedBy: organizerUser.id,
+        reviewedAt: new Date(),
+        rejectionReason: reason ?? 'Rejected by event organizer',
+        cancelledAt: new Date(),
+      })
+      .where(eq(registrations.id, registrationId))
+      .returning();
+
+    // Release seat if held
+    if (
+      previousStatus === RegistrationStatus.CONFIRMED ||
+      previousStatus === RegistrationStatus.OFFERED
+    ) {
+      await releaseSeat(tx, eventId);
+    }
+
+    await notifyRegistrationRejected(tx, registrationId, reason, organizerUser.fullName);
+
+    return {
+      success: true,
+      registration: updatedReg!,
+    };
   });
 }
 
@@ -446,9 +797,12 @@ export async function claimWaitlistOffer(
       };
     }
 
-    // Free event -> Issue ticket and enqueue notifications (EMAIL & WHATSAPP)
-    const ticket = await issueTicket(tx, claimed);
-    await notifyBookingConfirmed(tx, claimed.id);
+    // Free event -> Issue ticket and enqueue notifications if approved
+    let ticket: Ticket | undefined;
+    if (claimed.approvalStatus === 'APPROVED') {
+      ticket = await issueTicket(tx, claimed);
+      await notifyBookingConfirmed(tx, claimed.id);
+    }
 
     return {
       outcome: 'CONFIRMED',

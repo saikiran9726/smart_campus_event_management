@@ -12,8 +12,10 @@ import {
   clubMembers,
   clubs,
   events,
+  ledgerEntries,
   payments,
   registrations,
+  tickets,
   users,
 } from '../db/schema';
 import { signSandboxWebhookPayload } from '../modules/payments/service';
@@ -344,5 +346,73 @@ describe('Registrations, Payments, Waitlist, & Strikes Unit and Route Suite', ()
     const json = JSON.parse(whRes.body);
     expect(json.outcome).toBe('SUCCEEDED');
     expect(json.ticket).toBeDefined();
+
+    // Regression Test: Calling webhook a 2nd time must be idempotent and NOT duplicate ledger rows or tickets
+    const duplicateRes = await server.inject({
+      method: 'POST',
+      url: '/webhooks/sandbox',
+      headers: {
+        'content-type': 'application/json',
+        'x-sandbox-signature': signature,
+      },
+      payload,
+    });
+    expect(duplicateRes.statusCode).toBe(200);
+    const dupJson = JSON.parse(duplicateRes.body);
+    expect(dupJson.outcome).toBe('SUCCEEDED');
+
+    const ledgers = await db
+      .select()
+      .from(ledgerEntries)
+      .where(eq(ledgerEntries.paymentId, pmt!.id));
+    expect(ledgers.length).toBe(1);
+
+    const issuedTickets = await db
+      .select()
+      .from(tickets)
+      .where(eq(tickets.registrationId, paidReg!.id));
+    expect(issuedTickets.length).toBe(1);
+
+    // Replay with simulate: 'FAILURE' on an already SUCCEEDED payment must NOT flip or cancel
+    const replayPayload = JSON.stringify({
+      paymentId: pmt!.id,
+      simulate: 'FAILURE',
+    });
+    const replaySig = signSandboxWebhookPayload(replayPayload);
+    const replayRes = await server.inject({
+      method: 'POST',
+      url: '/webhooks/sandbox',
+      headers: {
+        'content-type': 'application/json',
+        'x-sandbox-signature': replaySig,
+      },
+      payload: replayPayload,
+    });
+    expect(replayRes.statusCode).toBe(200);
+    const replayJson = JSON.parse(replayRes.body);
+    expect(replayJson.outcome).toBe('SUCCEEDED'); // Remains SUCCEEDED
+  });
+
+  it('POST /webhooks/sandbox rejects unsigned or invalidly signed webhooks (403)', async () => {
+    // Missing signature
+    const unRes = await server.inject({
+      method: 'POST',
+      url: '/webhooks/sandbox',
+      headers: { 'content-type': 'application/json' },
+      payload: JSON.stringify({ paymentId: 'dummy-id', simulate: 'SUCCESS' }),
+    });
+    expect(unRes.statusCode).toBe(403);
+
+    // Invalid signature
+    const badRes = await server.inject({
+      method: 'POST',
+      url: '/webhooks/sandbox',
+      headers: {
+        'content-type': 'application/json',
+        'x-sandbox-signature': 'invalid_signature_hex_value',
+      },
+      payload: JSON.stringify({ paymentId: 'dummy-id', simulate: 'SUCCESS' }),
+    });
+    expect(badRes.statusCode).toBe(403);
   });
 });

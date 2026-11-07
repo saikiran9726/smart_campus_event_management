@@ -1,9 +1,9 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { desc, isNull } from 'drizzle-orm';
-import { UserRole } from '@eventora/shared';
+import { and, desc, eq, isNull } from 'drizzle-orm';
+import { ClubMemberRole, UserRole } from '@eventora/shared';
 import { db } from '../../db/client';
-import { expenseItems } from '../../db/schema';
+import { budgetAllocations, clubMembers, expenseItems } from '../../db/schema';
 import { AppError } from '../../lib/app-error';
 import { requireFaculty } from '../../middleware/rbac';
 import { requireAuth } from '../../plugins/auth';
@@ -15,12 +15,68 @@ import {
   signOffExpense,
 } from './service';
 
+async function requireClubBudgetAccess(request: FastifyRequest, _reply: FastifyReply): Promise<void> {
+  if (!request.user) {
+    throw new AppError('UNAUTHENTICATED', 'Authentication required.', 401);
+  }
+  if (request.user.role === UserRole.ADMIN || request.user.role === UserRole.FACULTY) {
+    return;
+  }
+  const params = request.params as Record<string, string | undefined>;
+  const clubId = params.clubId;
+  if (!clubId) {
+    throw new AppError('VALIDATION_FAILED', 'Missing clubId parameter', 400);
+  }
+  const [membership] = await db
+    .select({ role: clubMembers.role })
+    .from(clubMembers)
+    .where(and(eq(clubMembers.clubId, clubId), eq(clubMembers.userId, request.user.id)))
+    .limit(1);
+
+  if (!membership || (membership.role !== ClubMemberRole.OWNER && membership.role !== ClubMemberRole.ADMIN)) {
+    throw new AppError('FORBIDDEN', 'Insufficient permissions to access club budget.', 403);
+  }
+}
+
+async function requireAllocationExpenseAccess(request: FastifyRequest, _reply: FastifyReply): Promise<void> {
+  if (!request.user) {
+    throw new AppError('UNAUTHENTICATED', 'Authentication required.', 401);
+  }
+  if (request.user.role === UserRole.ADMIN || request.user.role === UserRole.FACULTY) {
+    return;
+  }
+  const params = request.params as Record<string, string | undefined>;
+  const allocationId = params.id;
+  if (!allocationId) {
+    throw new AppError('VALIDATION_FAILED', 'Missing allocation id parameter', 400);
+  }
+  const [allocation] = await db
+    .select({ clubId: budgetAllocations.clubId })
+    .from(budgetAllocations)
+    .where(eq(budgetAllocations.id, allocationId))
+    .limit(1);
+
+  if (!allocation) {
+    throw new AppError('NOT_FOUND', `Budget allocation '${allocationId}' not found.`, 404);
+  }
+
+  const [membership] = await db
+    .select({ role: clubMembers.role })
+    .from(clubMembers)
+    .where(and(eq(clubMembers.clubId, allocation.clubId), eq(clubMembers.userId, request.user.id)))
+    .limit(1);
+
+  if (!membership || (membership.role !== ClubMemberRole.OWNER && membership.role !== ClubMemberRole.ADMIN)) {
+    throw new AppError('FORBIDDEN', 'Insufficient permissions to submit expenses for this club.', 403);
+  }
+}
+
 export async function budgetRoutes(app: FastifyInstance): Promise<void> {
   // 1. Create budget allocation for a club (auth required)
   app.post(
     '/clubs/:clubId/allocations',
     {
-      preHandler: [requireAuth],
+      preHandler: [requireAuth, requireClubBudgetAccess],
       schema: {
         params: z.object({
           clubId: z.string().uuid(),
@@ -57,7 +113,7 @@ export async function budgetRoutes(app: FastifyInstance): Promise<void> {
   app.get(
     '/clubs/:clubId/budget',
     {
-      preHandler: [requireAuth],
+      preHandler: [requireAuth, requireClubBudgetAccess],
       schema: {
         params: z.object({
           clubId: z.string().uuid(),
@@ -75,7 +131,7 @@ export async function budgetRoutes(app: FastifyInstance): Promise<void> {
   app.post(
     '/allocations/:id/expenses',
     {
-      preHandler: [requireAuth],
+      preHandler: [requireAuth, requireAllocationExpenseAccess],
       schema: {
         params: z.object({
           id: z.string().uuid(),
@@ -131,7 +187,7 @@ export async function budgetRoutes(app: FastifyInstance): Promise<void> {
   app.get(
     '/clubs/:clubId/budget/export.csv',
     {
-      preHandler: [requireAuth],
+      preHandler: [requireAuth, requireClubBudgetAccess],
       schema: {
         params: z.object({
           clubId: z.string().uuid(),

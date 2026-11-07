@@ -1,4 +1,6 @@
 @import '@fontsource-variable/inter';
+@import '@fontsource-variable/manrope';
+@import '@fontsource-variable/jetbrains-mono';
 
 @tailwind base;
 @tailwind components;
@@ -6,57 +8,88 @@
 
 @layer base {
   :root {
-    --brand-indigo: #4338ca;
-    --accent-violet: #6366f1;
-    --status-emerald: #059669;
-    --status-rose: #e11d48;
-    --status-amber: #d97706;
-    --color-slate: #0f172a;
+    /* Neutral Stone (50 - 900) */
+    --stone-50: #FAFAF9;
+    --stone-100: #F5F5F4;
+    --stone-200: #E7E5E4;
+    --stone-300: #D6D3D1;
+    --stone-400: #A8A29E;
+    --stone-500: #78716C;
+    --stone-600: #57534E;
+    --stone-700: #44403C;
+    --stone-800: #292524;
+    --stone-900: #1C1917;
 
-    /* Light Mode */
-    --background: 210 40% 98%;      /* #f8fafc */
-    --foreground: 222 47% 11%;      /* #0f172a */
-    --card: 0 0% 100%;              /* #ffffff */
-    --card-foreground: 222 47% 11%; /* #0f172a */
-    --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-    --primary: 243 75% 59%;         /* #4338ca */
+    /* Brand Teal (50 - 800) */
+    --teal-50: #F0FDFA;
+    --teal-100: #CCFBF1;
+    --teal-500: #14B8A6;
+    --teal-600: #0D9488;
+    --teal-700: #0F766E;
+    --teal-800: #115E59;
+
+    /* Accent Amber (100 - 500) */
+    --amber-100: #FEF3C7;
+    --amber-400: #FBBF24;
+    --amber-500: #F59E0B;
+
+    /* Semantic */
+    --success: #15803D;
+    --success-bg: #F0FDF4;
+    --success-border: #BBF7D0;
+    --warning: #B45309;
+    --warning-bg: #FFFBEB;
+    --warning-border: #FDE68A;
+    --danger: #B91C1C;
+    --danger-bg: #FEF2F2;
+    --danger-border: #FECACA;
+    --info: #1D4ED8;
+    --info-bg: #EFF6FF;
+    --info-border: #BFDBFE;
+
+    /* Base theme bindings */
+    --background: 60 9% 98%;          /* #FAFAF9 */
+    --foreground: 20 6% 15%;          /* #292524 */
+    --card: 0 0% 100%;                /* #FFFFFF */
+    --card-foreground: 20 6% 15%;     /* #292524 */
+    --popover: 0 0% 100%;             /* #FFFFFF */
+    --popover-foreground: 20 6% 15%;  /* #292524 */
+    --primary: 175 77% 26%;           /* #0F766E */
     --primary-foreground: 0 0% 100%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222 47% 11%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 239 84% 67%;          /* #6366f1 */
-    --accent-foreground: 0 0% 100%;
-    --destructive: 346 84% 50%;     /* #e11d48 */
+    --secondary: 60 5% 96%;           /* #F5F5F4 */
+    --secondary-foreground: 20 6% 15%;/* #292524 */
+    --muted: 60 5% 96%;               /* #F5F5F4 */
+    --muted-foreground: 24 5% 32%;    /* #57534E */
+    --accent: 168 76% 97%;            /* #F0FDFA */
+    --accent-foreground: 175 77% 26%; /* #0F766E */
+    --destructive: 0 74% 42%;         /* #B91C1C */
     --destructive-foreground: 0 0% 100%;
-    --border: 214.3 31.8% 91.4%;    /* slate-200 / 80% */
-    --input: 214.3 31.8% 91.4%;
-    --ring: 243 75% 59%;            /* Indigo ring */
-    --radius: 0.5rem;
+    --border: 30 4% 90%;              /* #E7E5E4 */
+    --input: 30 4% 90%;               /* #E7E5E4 */
+    --ring: 175 77% 26%;              /* #0F766E */
+    --radius: 0.75rem;                /* 12px default */
   }
 
   .dark {
-    /* Dark Mode */
-    --background: 224 39% 7%;       /* #0b0f19 */
-    --foreground: 210 40% 98%;      /* #f8fafc */
-    --card: 222 41% 13%;            /* #131b2e */
-    --card-foreground: 210 40% 98%; /* #f8fafc */
-    --popover: 222 41% 13%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 239 84% 67%;         /* #6366f1 */
+    --background: 24 10% 10%;         /* #1C1917 */
+    --foreground: 60 9% 98%;          /* #FAFAF9 */
+    --card: 20 6% 15%;                /* #292524 */
+    --card-foreground: 60 9% 98%;     /* #FAFAF9 */
+    --popover: 20 6% 15%;
+    --popover-foreground: 60 9% 98%;
+    --primary: 175 77% 32%;           /* #14B8A6 */
     --primary-foreground: 0 0% 100%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 239 84% 67%;
+    --secondary: 24 6% 25%;           /* #44403C */
+    --secondary-foreground: 60 9% 98%;
+    --muted: 24 6% 25%;
+    --muted-foreground: 25 5% 64%;    /* #A8A29E */
+    --accent: 175 77% 26%;
     --accent-foreground: 0 0% 100%;
-    --destructive: 346 84% 50%;
+    --destructive: 0 74% 42%;
     --destructive-foreground: 0 0% 100%;
-    --border: 217.2 32.6% 17.5%;     /* #1e293b */
-    --input: 217.2 32.6% 17.5%;
-    --ring: 239 84% 67%;
+    --border: 24 6% 25%;              /* #44403C */
+    --input: 24 6% 25%;
+    --ring: 175 77% 32%;
   }
 
   * {
@@ -65,11 +98,19 @@
 
   body {
     @apply bg-background text-foreground antialiased;
+    font-family: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    transition: background-color 150ms ease, color 150ms ease;
   }
 
   h1, h2, h3, h4, h5, h6 {
-    letter-spacing: -0.02em;
+    font-family: 'Manrope Variable', 'Manrope', 'Inter Variable', sans-serif;
+    letter-spacing: -0.025em;
+    font-weight: 700;
+  }
+
+  code, pre, kbd, samp, .font-mono {
+    font-family: 'JetBrains Mono Variable', 'JetBrains Mono', monospace;
   }
 }
 
@@ -78,7 +119,13 @@
     font-variant-numeric: tabular-nums;
   }
   .focus-ring {
-    @apply focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-500/20 dark:focus-visible:ring-indigo-500/30;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700/30 dark:focus-visible:ring-teal-500/40 focus-visible:ring-offset-1 focus-visible:ring-offset-background;
+  }
+  .brand-teal-gradient {
+    background: linear-gradient(135deg, #F0FDFA 0%, rgba(204, 251, 241, 0.35) 50%, #FAFAF9 100%);
+  }
+  .dark .brand-teal-gradient {
+    background: linear-gradient(135deg, rgba(15, 118, 110, 0.15) 0%, rgba(13, 148, 136, 0.08) 50%, #1C1917 100%);
   }
 }
 

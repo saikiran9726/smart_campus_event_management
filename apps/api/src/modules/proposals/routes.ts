@@ -44,7 +44,7 @@ export async function proposalRoutes(server: FastifyInstance): Promise<void> {
       ],
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
-      const { clubId } = request.params as { clubId: string };
+      const { clubId: rawClubId } = request.params as { clubId: string };
       const body = request.body as {
         title: string;
         description: string;
@@ -65,11 +65,25 @@ export async function proposalRoutes(server: FastifyInstance): Promise<void> {
         throw new AppError('VALIDATION_FAILED', 'End time must be after start time.', 400);
       }
 
-      // Check venue existence and capacity
+      // Resolve club by UUID or slug
+      const isClubUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawClubId);
+      const [clubRecord] = await db
+        .select({ id: clubs.id, facultyCoordinatorId: clubs.facultyCoordinatorId })
+        .from(clubs)
+        .where(isClubUuid ? eq(clubs.id, rawClubId) : eq(clubs.slug, rawClubId))
+        .limit(1);
+
+      if (!clubRecord) {
+        throw new AppError('NOT_FOUND', `Club '${rawClubId}' not found.`, 404);
+      }
+      const clubId = clubRecord.id;
+
+      // Check venue existence and capacity (supports UUID or venue name)
+      const isVenueUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.venueId);
       const [venue] = await db
         .select()
         .from(venues)
-        .where(eq(venues.id, body.venueId))
+        .where(isVenueUuid ? eq(venues.id, body.venueId) : eq(venues.name, body.venueId))
         .limit(1);
 
       if (!venue) {
@@ -202,20 +216,21 @@ export async function proposalRoutes(server: FastifyInstance): Promise<void> {
         }
 
         // (c) Resolve Faculty Coordinator for Club
-        const [club] = await tx
-          .select({ facultyCoordinatorId: clubs.facultyCoordinatorId })
-          .from(clubs)
-          .where(eq(clubs.id, clubId))
-          .limit(1);
-
-        let facultyId = club?.facultyCoordinatorId;
-        if (!facultyId) {
-          const [anyFaculty] = await tx
-            .select({ id: users.id })
+        // STRICT: Never assign proposer or unassigned users as faculty approvers.
+        let facultyId: string | null = null;
+        if (clubRecord.facultyCoordinatorId) {
+          const [assignedFaculty] = await tx
+            .select({ id: users.id, role: users.role })
             .from(users)
-            .where(eq(users.role, UserRole.FACULTY))
+            .where(eq(users.id, clubRecord.facultyCoordinatorId))
             .limit(1);
-          facultyId = anyFaculty?.id ?? request.user!.id;
+
+          if (
+            assignedFaculty &&
+            (assignedFaculty.role === UserRole.FACULTY || assignedFaculty.role === UserRole.ADMIN)
+          ) {
+            facultyId = assignedFaculty.id;
+          }
         }
 
         // (d) Insert Proposal
@@ -266,38 +281,28 @@ export async function proposalRoutes(server: FastifyInstance): Promise<void> {
           );
         }
 
-        // (g) Generate Magic Link Tokens for Faculty Approval and Rejection
-        const approveTokenData = await signApprovalToken({
-          proposalId: proposal.id,
-          facultyId,
-          action: 'APPROVE',
-          dbOrTx: tx,
-        });
+        // (g) Generate Magic Link Tokens ONLY if an authorized faculty coordinator is assigned
+        let approveUrl: string | null = null;
+        let rejectUrl: string | null = null;
 
-        const rejectTokenData = await signApprovalToken({
-          proposalId: proposal.id,
-          facultyId,
-          action: 'REJECT',
-          dbOrTx: tx,
-        });
-
-        const approveUrl = `${env.PUBLIC_WEB_URL}/faculty/decision?token=${approveTokenData.token}`;
-        const rejectUrl = `${env.PUBLIC_WEB_URL}/faculty/decision?token=${rejectTokenData.token}`;
-
-        // (h) Enqueue Notification for Faculty Coordinator
-        await tx.insert(notifications).values({
-          userId: facultyId,
-          kind: NotificationKind.FACULTY_APPROVAL,
-          channel: NotificationChannel.EMAIL,
-          payload: {
+        if (facultyId) {
+          const approveTokenData = await signApprovalToken({
             proposalId: proposal.id,
-            title: proposal.title,
-            clubId,
-            approveUrl,
-            rejectUrl,
-          },
-          status: 'QUEUED',
-        });
+            facultyId,
+            action: 'APPROVE',
+            dbOrTx: tx,
+          });
+
+          const rejectTokenData = await signApprovalToken({
+            proposalId: proposal.id,
+            facultyId,
+            action: 'REJECT',
+            dbOrTx: tx,
+          });
+
+          approveUrl = `${env.PUBLIC_WEB_URL}/faculty/decision?token=${approveTokenData.token}`;
+          rejectUrl = `${env.PUBLIC_WEB_URL}/faculty/decision?token=${rejectTokenData.token}`;
+        }
 
         return {
           ...proposal,
@@ -305,6 +310,41 @@ export async function proposalRoutes(server: FastifyInstance): Promise<void> {
           rejectUrl,
         };
       });
+
+      // (h) Enqueue Notification for Faculty Coordinator (post-commit, non-fatal)
+      // Transaction boundaries: proposal is safely committed. A notification failure
+      // or error cannot abort or rollback the created proposal.
+      if (createdProposal.facultyId && createdProposal.approveUrl && createdProposal.rejectUrl) {
+        try {
+          await db.insert(notifications).values({
+            userId: createdProposal.facultyId,
+            kind: NotificationKind.FACULTY_APPROVAL,
+            channel: NotificationChannel.EMAIL,
+            payload: {
+              proposalId: createdProposal.id,
+              title: createdProposal.title,
+              clubId,
+              approveUrl: createdProposal.approveUrl,
+              rejectUrl: createdProposal.rejectUrl,
+            },
+            status: 'QUEUED',
+          });
+        } catch (notifErr: any) {
+          request.log.warn(
+            {
+              error: notifErr?.message || notifErr,
+              proposalId: createdProposal.id,
+              facultyId: createdProposal.facultyId,
+            },
+            'Failed to enqueue faculty approval notification; proposal creation succeeded'
+          );
+        }
+      } else {
+        request.log.info(
+          { proposalId: createdProposal.id, clubId },
+          'Proposal created with status PENDING without assigned faculty coordinator; awaiting manual faculty review'
+        );
+      }
 
       return reply.status(201).send({ proposal: createdProposal });
     }

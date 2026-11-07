@@ -249,6 +249,15 @@ export async function signOffExpense(expenseId: string, userId: string, userRole
   return signed;
 }
 
+function safeBudgetCsvCell(val: unknown): string {
+  if (val === null || val === undefined) return '';
+  let str = String(val);
+  if (/^\s*[=+\-@\t\r]/.test(str)) {
+    str = `'${str}`;
+  }
+  return `"${str.replace(/"/g, '""')}"`;
+}
+
 export async function exportBudgetCsv(clubId: string): Promise<string> {
   const [club] = await db
     .select({ id: clubs.id, name: clubs.name })
@@ -308,7 +317,7 @@ export async function exportBudgetCsv(clubId: string): Promise<string> {
       lines.push(
         [
           alloc.id,
-          `"${alloc.title.replace(/"/g, '""')}"`,
+          safeBudgetCsvCell(alloc.title),
           alloc.category,
           allocInr,
           spentInr,
@@ -329,17 +338,17 @@ export async function exportBudgetCsv(clubId: string): Promise<string> {
         lines.push(
           [
             alloc.id,
-            `"${alloc.title.replace(/"/g, '""')}"`,
+            safeBudgetCsvCell(alloc.title),
             alloc.category,
             allocInr,
             spentInr,
             remainingInr,
             exp.id,
-            exp.category,
-            `"${exp.description.replace(/"/g, '""')}"`,
+            safeBudgetCsvCell(exp.category),
+            safeBudgetCsvCell(exp.description),
             expInr,
             exp.receiptKey,
-            exp.signedOffBy ? `"${exp.signedOffBy.replace(/"/g, '""')}"` : '',
+            safeBudgetCsvCell(exp.signedOffBy),
             exp.signedOffAt ? exp.signedOffAt.toISOString() : '',
             exp.createdAt.toISOString(),
           ].join(',')

@@ -28,6 +28,7 @@ export function createStorageClient(config?: StorageClientConfig): S3Client {
       endpoint: s3Endpoint,
       region: s3Region,
       forcePathStyle: true,
+      requestChecksumCalculation: 'WHEN_REQUIRED',
       credentials: {
         accessKeyId,
         secretAccessKey,

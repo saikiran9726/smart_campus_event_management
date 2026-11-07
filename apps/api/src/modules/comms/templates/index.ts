@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import handlebars from 'handlebars';
 import { NotificationKind } from '@eventora/shared';
-import { WhatsAppButton } from '../types';
+import { WhatsAppButton, WhatsAppTemplate } from '../types';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -45,8 +45,30 @@ function getCompiledEmail(kind: NotificationKind): handlebars.TemplateDelegate {
     case NotificationKind.STRIKE_NOTICE:
       filename = 'strike-notice.html.hbs';
       break;
+    case NotificationKind.REGISTRATION_APPROVED:
+      filename = 'registration-approved.html.hbs';
+      break;
+    case NotificationKind.REGISTRATION_REJECTED:
+      filename = 'registration-rejected.html.hbs';
+      break;
+    case NotificationKind.REGISTRATION_CANCELLED:
+      filename = 'registration-cancelled.html.hbs';
+      break;
+    case NotificationKind.PAYMENT_SUCCESS:
+      filename = 'payment-success.html.hbs';
+      break;
+    case NotificationKind.PAYMENT_FAILED:
+      filename = 'payment-failed.html.hbs';
+      break;
+    case NotificationKind.TEAM_INVITATION:
+      filename = 'team-invitation.html.hbs';
+      break;
+    case NotificationKind.ORGANIZER_ALERT:
+      filename = 'organizer-alert.html.hbs';
+      break;
     default:
-      throw new Error(`Unsupported email template kind '${kind}'`);
+      filename = 'organizer-alert.html.hbs';
+      break;
   }
 
   const source = getTemplateSource(filename);
@@ -80,8 +102,30 @@ function getCompiledWhatsApp(kind: NotificationKind): handlebars.TemplateDelegat
     case NotificationKind.STRIKE_NOTICE:
       filename = 'strike-notice.wa.hbs';
       break;
+    case NotificationKind.REGISTRATION_APPROVED:
+      filename = 'registration-approved.wa.hbs';
+      break;
+    case NotificationKind.REGISTRATION_REJECTED:
+      filename = 'registration-rejected.wa.hbs';
+      break;
+    case NotificationKind.REGISTRATION_CANCELLED:
+      filename = 'registration-cancelled.wa.hbs';
+      break;
+    case NotificationKind.PAYMENT_SUCCESS:
+      filename = 'payment-success.wa.hbs';
+      break;
+    case NotificationKind.PAYMENT_FAILED:
+      filename = 'payment-failed.wa.hbs';
+      break;
+    case NotificationKind.TEAM_INVITATION:
+      filename = 'team-invitation.wa.hbs';
+      break;
+    case NotificationKind.ORGANIZER_ALERT:
+      filename = 'organizer-alert.wa.hbs';
+      break;
     default:
-      throw new Error(`Unsupported WhatsApp template kind '${kind}'`);
+      filename = 'organizer-alert.wa.hbs';
+      break;
   }
 
   const source = getTemplateSource(filename);
@@ -104,8 +148,22 @@ export function getEmailSubject(kind: NotificationKind, data: Record<string, any
       return `Faculty Approval Required: ${data.eventTitle || 'Event Proposal'}`;
     case NotificationKind.STRIKE_NOTICE:
       return 'Campus Attendance Policy Notice: Strike Issued';
+    case NotificationKind.REGISTRATION_APPROVED:
+      return `Registration Approved: ${data.eventTitle || 'Campus Event'}`;
+    case NotificationKind.REGISTRATION_REJECTED:
+      return `Registration Update: ${data.eventTitle || 'Campus Event'}`;
+    case NotificationKind.REGISTRATION_CANCELLED:
+      return `Registration Cancelled: ${data.eventTitle || 'Campus Event'}`;
+    case NotificationKind.PAYMENT_SUCCESS:
+      return `Payment Receipt: ${data.eventTitle || 'Campus Event'} (Test Mode)`;
+    case NotificationKind.PAYMENT_FAILED:
+      return `Payment Notice: ${data.eventTitle || 'Campus Event'}`;
+    case NotificationKind.TEAM_INVITATION:
+      return `Team Invitation: ${data.teamName || 'Eventora Team'}`;
+    case NotificationKind.ORGANIZER_ALERT:
+      return data.title ? `${data.title} - ${data.eventTitle || 'Campus Notice'}` : `Event Notice: ${data.eventTitle || 'Campus Event'}`;
     default:
-      return `Notification: ${data.eventTitle || 'Campus Notice'}`;
+      return `Notification: ${data.eventTitle || data.title || 'Campus Notice'}`;
   }
 }
 
@@ -119,10 +177,136 @@ export function renderEmail(
   return { subject, html };
 }
 
+export function buildWhatsAppTemplate(
+  kind: NotificationKind,
+  data: Record<string, any>
+): WhatsAppTemplate {
+  switch (kind) {
+    case NotificationKind.BOOKING_CONFIRMED:
+      return {
+        name: 'eventora_booking_confirmed',
+        language: { code: 'en' },
+        components: [
+          {
+            type: 'body',
+            parameters: [
+              { type: 'text', text: data.studentName || 'Student' },
+              { type: 'text', text: data.eventTitle || 'Campus Event' },
+              { type: 'text', text: data.eventStart || 'Upcoming' },
+              { type: 'text', text: data.venueName || 'Campus Main Auditorium' },
+            ],
+          },
+        ],
+      };
+    case NotificationKind.REMINDER_24H:
+      return {
+        name: 'eventora_reminder_24h',
+        language: { code: 'en' },
+        components: [
+          {
+            type: 'body',
+            parameters: [
+              { type: 'text', text: data.studentName || 'Student' },
+              { type: 'text', text: data.eventTitle || 'Campus Event' },
+              { type: 'text', text: data.venueName || 'Campus Venue' },
+            ],
+          },
+        ],
+      };
+    case NotificationKind.REMINDER_2H:
+      return {
+        name: 'eventora_reminder_2h',
+        language: { code: 'en' },
+        components: [
+          {
+            type: 'body',
+            parameters: [
+              { type: 'text', text: data.studentName || 'Student' },
+              { type: 'text', text: data.eventTitle || 'Campus Event' },
+              { type: 'text', text: data.venueName || 'Campus Venue' },
+            ],
+          },
+        ],
+      };
+    case NotificationKind.WAITLIST_OFFER:
+      return {
+        name: 'eventora_waitlist_offer',
+        language: { code: 'en' },
+        components: [
+          {
+            type: 'body',
+            parameters: [
+              { type: 'text', text: data.studentName || 'Student' },
+              { type: 'text', text: data.eventTitle || 'Campus Event' },
+            ],
+          },
+        ],
+      };
+    case NotificationKind.TEAM_INVITATION:
+      return {
+        name: 'eventora_team_invitation',
+        language: { code: 'en' },
+        components: [
+          {
+            type: 'body',
+            parameters: [
+              { type: 'text', text: data.studentName || 'Student' },
+              { type: 'text', text: data.inviterName || 'Teammate' },
+              { type: 'text', text: data.teamName || 'Team' },
+            ],
+          },
+        ],
+      };
+    case NotificationKind.PAYMENT_SUCCESS:
+      return {
+        name: 'eventora_payment_success',
+        language: { code: 'en' },
+        components: [
+          {
+            type: 'body',
+            parameters: [
+              { type: 'text', text: data.studentName || 'Student' },
+              { type: 'text', text: String(data.amount || 0) },
+              { type: 'text', text: data.eventTitle || 'Campus Event' },
+            ],
+          },
+        ],
+      };
+    case NotificationKind.PAYMENT_FAILED:
+      return {
+        name: 'eventora_payment_failed',
+        language: { code: 'en' },
+        components: [
+          {
+            type: 'body',
+            parameters: [
+              { type: 'text', text: data.studentName || 'Student' },
+              { type: 'text', text: data.eventTitle || 'Campus Event' },
+            ],
+          },
+        ],
+      };
+    default:
+      return {
+        name: 'eventora_announcement',
+        language: { code: 'en' },
+        components: [
+          {
+            type: 'body',
+            parameters: [
+              { type: 'text', text: data.studentName || 'Student' },
+              { type: 'text', text: data.title || data.eventTitle || 'Campus Notice' },
+            ],
+          },
+        ],
+      };
+  }
+}
+
 export function renderWhatsApp(
   kind: NotificationKind,
   data: Record<string, any>
-): { text: string; buttons?: WhatsAppButton[]; mediaUrl?: string } {
+): { text: string; buttons?: WhatsAppButton[]; mediaUrl?: string; template?: WhatsAppTemplate } {
   const delegate = getCompiledWhatsApp(kind);
   const text = delegate(data);
 
@@ -136,5 +320,7 @@ export function renderWhatsApp(
     ];
   }
 
-  return { text, buttons, mediaUrl: data.qrImageUrl };
+  const template = buildWhatsAppTemplate(kind, data);
+
+  return { text, buttons, mediaUrl: data.qrImageUrl, template };
 }

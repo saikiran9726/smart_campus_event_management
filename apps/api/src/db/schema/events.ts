@@ -10,7 +10,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import { EventStatus } from '@eventora/shared';
+import { EventStatus, ProjectSubmissionConfig } from '@eventora/shared';
 import { clubs } from './clubs';
 import { tstzrange } from './custom-types';
 import { eventStatusEnum } from './enums';
@@ -52,9 +52,18 @@ export const events = pgTable(
     isCompetition: boolean('is_competition').notNull().default(false),
     minTeamSize: integer('min_team_size'),
     maxTeamSize: integer('max_team_size'),
+    formVersion: integer('form_version').notNull().default(1),
+    formPublished: boolean('form_published').notNull().default(true),
+    registrationMode: text('registration_mode').notNull().default('INDIVIDUAL'),
+    teamPaymentPolicy: text('team_payment_policy').notNull().default('PER_MEMBER'),
+    allowMemberReplacement: boolean('allow_member_replacement').notNull().default(true),
+    allowLateJoining: boolean('allow_late_joining').notNull().default(true),
+    approvalRequired: boolean('approval_required').notNull().default(false),
+    cancellationDeadline: timestamp('cancellation_deadline', { withTimezone: true }),
     formFrozenAt: timestamp('form_frozen_at', { withTimezone: true }),
     checkinClosedAt: timestamp('checkin_closed_at', { withTimezone: true }),
     submissionDeadlineAt: timestamp('submission_deadline_at', { withTimezone: true }),
+    projectSubmissionConfig: jsonb('project_submission_config').$type<ProjectSubmissionConfig>(),
     strikesProcessedAt: timestamp('strikes_processed_at', { withTimezone: true }),
     createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',

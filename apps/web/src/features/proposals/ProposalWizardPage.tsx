@@ -148,7 +148,9 @@ export const ProposalWizardPage: React.FC = () => {
         .filter(([_, q]) => q > 0)
         .map(([avResourceId, quantity]) => ({ avResourceId, quantity }));
 
-      return await api.post(`/clubs/${clubId}/proposals`, {
+      const targetClubId = clubs.find((c) => c.id === clubId || c.slug === clubId)?.id || clubId;
+
+      return await api.post(`/clubs/${targetClubId}/proposals`, {
         title,
         description,
         expectedAttendance: Number(expectedAttendance),
@@ -644,7 +646,7 @@ export const ProposalWizardPage: React.FC = () => {
               <div className="p-3 rounded-lg border border-border bg-muted/20 space-y-1">
                 <span className="text-muted-foreground font-semibold">Hosting Organization:</span>
                 <p className="font-bold text-sm text-foreground">
-                  {clubs.find((c) => c.id === clubId)?.name || 'Selected Club'}
+                  {clubs.find((c) => c.id === clubId || c.slug === clubId)?.name || 'Selected Club'}
                 </p>
               </div>
 

@@ -35,7 +35,11 @@ const envSchema = z.object({
   TURNSTILE_SITE_KEY: z.string().default('1x00000000000000000000AA'),
 
   // Resend Email
-  EMAIL_PROVIDER: z.enum(['resend', 'console']).default('console'),
+  // Transactional Email (Brevo)
+  EMAIL_PROVIDER: z.enum(['brevo', 'resend', 'console']).default('console'),
+  BREVO_API_KEY: z.string().default(''),
+  EMAIL_FROM_ADDRESS: z.string().email().optional(),
+  EMAIL_FROM_NAME: z.string().default('Eventora'),
   RESEND_API_KEY: z.string().default('re_placeholder_resend_api_key'),
   MAIL_FROM: z.string().default('Eventora <events@eventora.campus.edu>'),
 
@@ -43,6 +47,9 @@ const envSchema = z.object({
   WHATSAPP_PROVIDER: z.enum(['meta', 'baileys', 'console']).default('console'),
   META_WA_TOKEN: z.string().optional(),
   META_WA_PHONE_ID: z.string().optional(),
+  META_WA_API_VERSION: z.string().default('v21.0'),
+  WHATSAPP_WEBHOOK_VERIFY_TOKEN: z.string().default('eventora_wa_verify_token'),
+  WHATSAPP_APP_SECRET: z.string().optional(),
 
   // Secrets
   MAGIC_LINK_SECRET: z.string().default('placeholder_magic_link_secret_at_least_32_chars_long'),

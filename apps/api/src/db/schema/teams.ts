@@ -24,7 +24,10 @@ export const teams = pgTable(
     leaderId: uuid('leader_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    inviteCode: char('invite_code', { length: 6 }).notNull(),
+    inviteCode: text('invite_code').notNull(),
+    codeStatus: text('code_status').notNull().default('ACTIVE'), // ACTIVE, REVOKED, EXPIRED
+    codeExpiresAt: timestamp('code_expires_at', { withTimezone: true }),
+    inviteToken: text('invite_token'),
     status: teamStatusEnum('status').notNull().default(TeamStatus.FORMING),
     lockedAt: timestamp('locked_at', { withTimezone: true }),
     projectTitle: text('project_title'),
@@ -37,6 +40,7 @@ export const teams = pgTable(
   (table) => [
     uniqueIndex('teams_event_invite_code_idx').on(table.eventId, table.inviteCode),
     uniqueIndex('teams_event_name_idx').on(table.eventId, table.name),
+    uniqueIndex('teams_invite_token_idx').on(table.inviteToken),
   ]
 );
 
@@ -99,3 +103,29 @@ export const teammatePool = pgTable(
 
 export type TeammatePoolEntry = typeof teammatePool.$inferSelect;
 export type NewTeammatePoolEntry = typeof teammatePool.$inferInsert;
+
+export const teamInvitations = pgTable(
+  'team_invitations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    teamId: uuid('team_id')
+      .notNull()
+      .references(() => teams.id, { onDelete: 'cascade' }),
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => events.id, { onDelete: 'cascade' }),
+    invitedBy: uuid('invited_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    invitedEmail: text('invited_email'),
+    invitedRollNumber: text('invited_roll_number'),
+    invitedUserId: uuid('invited_user_id').references(() => users.id, { onDelete: 'cascade' }),
+    status: text('status').notNull().default('PENDING'), // PENDING, ACCEPTED, REJECTED, CANCELLED, EXPIRED
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    respondedAt: timestamp('responded_at', { withTimezone: true }),
+  }
+);
+
+export type TeamInvitation = typeof teamInvitations.$inferSelect;
+export type NewTeamInvitation = typeof teamInvitations.$inferInsert;

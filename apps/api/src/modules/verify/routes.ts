@@ -8,6 +8,7 @@ import {
   getCertificateShareData,
   getEventResourcesForUser,
   getUserPassport,
+  revokeCertificate,
 } from './service';
 import { getOrGenerateCertificateOgPng } from './og.service';
 
@@ -194,6 +195,30 @@ export async function verifyRoutes(app: FastifyInstance): Promise<void> {
 
       const data = await getEventResourcesForUser(eventId, userId, role);
       return reply.code(200).send(data);
+    }
+  );
+
+  // 8. Revoke certificate (Organizer/Faculty/Admin)
+  app.post(
+    '/certificates/:id/revoke',
+    {
+      preHandler: [requireAuth],
+      schema: {
+        params: z.object({
+          id: z.string().uuid(),
+        }),
+        body: z
+          .object({
+            reason: z.string().trim().optional(),
+          })
+          .default({}),
+      },
+    },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const body = (request.body as { reason?: string } | undefined) || {};
+      const result = await revokeCertificate(id, request.user!, body.reason);
+      return reply.code(200).send(result);
     }
   );
 }

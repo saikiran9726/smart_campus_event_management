@@ -951,11 +951,37 @@ export async function getGateStats(eventId: string) {
       )
     );
 
+  // Count registration breakdown
+  const [regBreakdown] = await db
+    .select({
+      total: count(),
+      confirmed: count(sql`CASE WHEN ${registrations.status} = 'CONFIRMED' THEN 1 END`),
+      waitlisted: count(sql`CASE WHEN ${registrations.status} = 'WAITLISTED' THEN 1 END`),
+      cancelled: count(sql`CASE WHEN ${registrations.status} = 'CANCELLED' THEN 1 END`),
+      pendingPayment: count(sql`CASE WHEN ${registrations.paymentStatus} = 'PENDING' THEN 1 END`),
+    })
+    .from(registrations)
+    .where(eq(registrations.eventId, eventId));
+
+  const totalRegs = Number(regBreakdown?.total ?? 0);
+  const confirmedRegs = Number(regBreakdown?.confirmed ?? 0);
+  const waitlistedCount = Number(regBreakdown?.waitlisted ?? 0);
+  const cancelledCount = Number(regBreakdown?.cancelled ?? 0);
+  const pendingPayments = Number(regBreakdown?.pendingPayment ?? 0);
+
   return {
     checkedIn: Number(checkedInCount?.total ?? 0),
     remaining: event.remainingCapacity,
+    remainingCapacity: event.remainingCapacity,
     totalCapacity: event.capacity,
     mealsRedeemed: Number(mealRedemptions?.total ?? 0),
+    mealsDispensed: Number(mealRedemptions?.total ?? 0),
     kitsRedeemed: Number(kitRedemptions?.total ?? 0),
+    kitsDispensed: Number(kitRedemptions?.total ?? 0),
+    totalRegistrations: totalRegs,
+    confirmedRegistrations: confirmedRegs,
+    pendingPayments,
+    waitlistedCount,
+    cancelledCount,
   };
 }

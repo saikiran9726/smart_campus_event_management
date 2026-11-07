@@ -1,9 +1,10 @@
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import { FastifyReply } from 'fastify';
 import {
   FormQuestionDef,
   MAX_UPLOAD_BYTES,
   QuestionType,
+  TicketStatus,
   buildAnswerValidator,
 } from '@eventora/shared';
 import { db } from '../../db/client';
@@ -14,6 +15,9 @@ import {
   FormQuestion,
   formQuestions,
   registrations,
+  teamMembers,
+  teams,
+  tickets,
   users,
 } from '../../db/schema';
 import { AppError } from '../../lib/app-error';
@@ -240,11 +244,19 @@ export async function submitAnswers(
 }
 
 /**
- * Escapes a cell value according to RFC 4180 CSV standard.
+ * Escapes a cell value according to RFC 4180 CSV standard and neutralizes
+ * CSV Formula Injection (CWE-1236) by prepending a single quote to cells
+ * starting with formula trigger characters (=, +, -, @, \t, \r).
  */
 export function escapeCsv(val: unknown): string {
   if (val === null || val === undefined) return '';
   let str = typeof val === 'object' ? JSON.stringify(val) : String(val);
+
+  // Neutralize CSV Formula Injection (CWE-1236), including leading whitespace bypasses
+  if (/^\s*[=+\-@\t\r]/.test(str)) {
+    str = `'${str}`;
+  }
+
   if (
     str.includes(',') ||
     str.includes('"') ||
@@ -257,11 +269,21 @@ export function escapeCsv(val: unknown): string {
 }
 
 /**
- * Streams responses for an event as an RFC 4180 compliant CSV.
+ * Streams responses for an event as an RFC 4180 compliant CSV with formula injection protection.
  */
 export async function streamResponsesCsv(
   eventId: string,
-  reply: FastifyReply
+  reply: FastifyReply,
+  filters?: {
+    q?: string;
+    search?: string;
+    status?: string;
+    paymentStatus?: string;
+    checkedIn?: string | boolean;
+    department?: string;
+    year?: string | number;
+    team?: string;
+  }
 ): Promise<void> {
   const questions = await db
     .select()
@@ -273,6 +295,54 @@ export async function streamResponsesCsv(
       )
     )
     .orderBy(asc(formQuestions.position));
+
+  const conditions = [eq(registrations.eventId, eventId)];
+
+  if (filters?.status && filters.status !== 'ALL') {
+    conditions.push(eq(registrations.status, filters.status as any));
+  }
+  if (filters?.paymentStatus && filters.paymentStatus !== 'ALL') {
+    conditions.push(eq(registrations.paymentStatus, filters.paymentStatus as any));
+  }
+  const searchPattern = (filters?.search || filters?.q || '').trim();
+  if (searchPattern.length > 0) {
+    const pattern = `%${searchPattern}%`;
+    conditions.push(
+      or(
+        ilike(users.fullName, pattern),
+        ilike(users.email, pattern),
+        ilike(users.rollNumber, pattern),
+        ilike(users.phone, pattern)
+      )!
+    );
+  }
+  if (filters?.department && filters.department !== 'ALL') {
+    conditions.push(eq(users.department, filters.department));
+  }
+  if (filters?.year && filters.year !== 'ALL') {
+    conditions.push(eq(users.year, parseInt(String(filters.year), 10)));
+  }
+  if (filters?.team && filters.team !== 'ALL') {
+    if (filters.team === 'WITH_TEAM') {
+      conditions.push(sql`${teams.id} IS NOT NULL`);
+    } else if (filters.team === 'SOLO') {
+      conditions.push(sql`${teams.id} IS NULL`);
+    } else {
+      conditions.push(
+        or(eq(teams.id, filters.team), ilike(teams.name, `%${filters.team}%`))!
+      );
+    }
+  }
+  if (filters?.checkedIn !== undefined && filters?.checkedIn !== 'ALL') {
+    const isCheckedIn =
+      String(filters.checkedIn).toLowerCase() === 'true' ||
+      filters.checkedIn === true;
+    if (isCheckedIn) {
+      conditions.push(eq(tickets.status, TicketStatus.CHECKED_IN));
+    } else {
+      conditions.push(or(isNull(tickets.status), ne(tickets.status, TicketStatus.CHECKED_IN))!);
+    }
+  }
 
   const regRows = await db
     .select({
@@ -287,10 +357,23 @@ export async function streamResponsesCsv(
       department: users.department,
       year: users.year,
       phone: users.phone,
+      ticketStatus: tickets.status,
+      checkedInAt: tickets.checkedInAt,
+      checkedInVia: tickets.checkedInVia,
+      teamName: teams.name,
     })
     .from(registrations)
     .innerJoin(users, eq(registrations.userId, users.id))
-    .where(eq(registrations.eventId, eventId))
+    .leftJoin(tickets, eq(tickets.registrationId, registrations.id))
+    .leftJoin(
+      teamMembers,
+      and(
+        eq(teamMembers.userId, registrations.userId),
+        eq(teamMembers.eventId, registrations.eventId)
+      )
+    )
+    .leftJoin(teams, eq(teamMembers.teamId, teams.id))
+    .where(and(...conditions))
     .orderBy(desc(registrations.createdAt));
 
   const regIds = regRows.map((r) => r.registrationId);
@@ -311,14 +394,20 @@ export async function streamResponsesCsv(
 
   const baseHeaders = [
     'Registration ID',
-    'User Name',
-    'User Email',
+    'Full Name',
+    'Email',
+    'Phone',
     'Roll Number',
     'Department',
-    'Year',
-    'Phone',
-    'Status',
-    'Registered At',
+    'Academic Year',
+    'Registration Date',
+    'Registration Status',
+    'Payment Status',
+    'Check-in Status',
+    'Ticket Status',
+    'Checked In At',
+    'Checked In Via',
+    'Team Name',
   ];
 
   const questionHeaders = questions.map((q) => q.label);
@@ -334,13 +423,27 @@ export async function streamResponsesCsv(
       r.registrationId,
       r.fullName,
       r.email,
+      r.phone ?? '',
       r.rollNumber ?? '',
       r.department ?? '',
-      r.year !== null ? String(r.year) : '',
-      r.phone ?? '',
-      r.status,
+      r.year !== null && r.year !== undefined ? String(r.year) : '',
       r.registeredAt.toISOString(),
-      ...questions.map((q) => userAnswers[q.id]),
+      r.status,
+      r.paymentStatus ?? '',
+      r.ticketStatus === TicketStatus.CHECKED_IN ? 'CHECKED_IN' : 'NOT_CHECKED_IN',
+      r.ticketStatus ?? 'VALID',
+      r.checkedInAt ? r.checkedInAt.toISOString() : '',
+      r.checkedInVia ?? '',
+      r.teamName ?? '',
+      ...questions.map((q) => {
+        const aVal = userAnswers[q.id];
+        if (aVal === null || aVal === undefined) return '';
+        if (typeof aVal === 'object') {
+          if (aVal.filename || aVal.objectKey) return aVal.filename || aVal.objectKey;
+          return JSON.stringify(aVal);
+        }
+        return String(aVal);
+      }),
     ];
     rows.push(rowValues.map(escapeCsv).join(','));
   }

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Negative Security: QR Screenshot Duplication Detection', () => {
-  const API_URL = 'http://localhost:3001';
+  const API_URL = process.env.API_URL || 'http://localhost:4000';
 
   test('valid token scans GREEN in context 1; same token scans RED with timestamp in context 2', async ({
     browser,
@@ -81,7 +81,7 @@ test.describe('Negative Security: QR Screenshot Duplication Detection', () => {
     const scan1Res = await page1.evaluate(
       async ({ eventId, token }) => {
         const scannerToken = sessionStorage.getItem('eventora_scanner_token');
-        const res = await fetch('http://localhost:3001/gate/scan', {
+        const res = await fetch('http://localhost:4000/gate/scan', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -110,7 +110,7 @@ test.describe('Negative Security: QR Screenshot Duplication Detection', () => {
     const scan2Res = await page2.evaluate(
       async ({ eventId, token }) => {
         const scannerToken = sessionStorage.getItem('eventora_scanner_token');
-        const res = await fetch('http://localhost:3001/gate/scan', {
+        const res = await fetch('http://localhost:4000/gate/scan', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

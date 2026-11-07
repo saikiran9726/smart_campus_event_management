@@ -8,7 +8,9 @@ export const QR_TOKEN_LENGTH = 32;
 export const PASSKEY_PREFIX = 'SCAN-';
 export const PASSKEY_DIGITS = 6;
 
-export const TEAM_CODE_LENGTH = 6;
+export const TEAM_CODE_LENGTH = 8;
+export const TEAM_INVITE_TOKEN_PREFIX = 'ev_inv_';
+export const TEAM_INVITE_TOKEN_LENGTH = 32;
 
 export const STRIKE_THRESHOLD = 2;
 export const STRIKE_COOLDOWN_DAYS = 30;

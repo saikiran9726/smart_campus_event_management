@@ -1,6 +1,8 @@
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import {
   ClubMemberRole,
+  DEFAULT_PROJECT_SUBMISSION_CONFIG,
+  ProjectSubmissionConfig,
   TeamStatus,
   UserRole,
 } from '@eventora/shared';
@@ -8,6 +10,8 @@ import { db } from '../../db/client';
 import {
   clubMembers,
   events,
+  projectSubmissions,
+  registrations,
   teamMembers,
   teamRosterSnapshots,
   teams,
@@ -27,11 +31,105 @@ const ALLOWED_DECK_MIMES = new Set([
 ]);
 
 export interface SubmitProjectInput {
-  projectTitle: string;
-  abstract: string;
-  repoUrl: string;
-  demoUrl?: string;
-  deckKey?: string;
+  projectTitle?: string | null;
+  abstract?: string | null;
+  repoUrl?: string | null;
+  demoUrl?: string | null;
+  deckKey?: string | null;
+  customFields?: Record<string, unknown>;
+}
+
+/**
+ * Validates submission fields against the event's ProjectSubmissionConfig
+ */
+export function validateSubmissionAgainstConfig(
+  config: ProjectSubmissionConfig | null,
+  event: { submissionDeadlineAt: Date | null; endAt: Date },
+  input: SubmitProjectInput,
+  hasExistingSubmission: boolean
+) {
+  // If config is present, check if enabled
+  if (config && !config.enabled) {
+    throw new AppError('SUBMISSIONS_DISABLED', 'Project submissions are not enabled for this event.', 400);
+  }
+
+  const effectiveConfig = config?.enabled ? config : DEFAULT_PROJECT_SUBMISSION_CONFIG;
+
+  // Deadline check
+  const now = new Date();
+  const deadline = effectiveConfig.deadline
+    ? new Date(effectiveConfig.deadline)
+    : (event.submissionDeadlineAt ?? event.endAt);
+
+  if (now > deadline) {
+    throw new AppError('DEADLINE_PASSED', 'Submission deadline has passed. Submissions are closed.', 403);
+  }
+
+  // Editing check
+  if (hasExistingSubmission && !effectiveConfig.allowEditAfterSubmission) {
+    throw new AppError('EDITING_NOT_ALLOWED', 'Editing project submissions is disabled by the organizer.', 403);
+  }
+
+  // Validate fields if submission is enabled
+  if (config?.enabled) {
+    for (const field of effectiveConfig.fields || []) {
+      if (!field.enabled) continue;
+
+      if (field.key === 'title' && field.required) {
+        if (!input.projectTitle || !input.projectTitle.trim()) {
+          throw new AppError('VALIDATION_FAILED', `${field.label || 'Project Title'} is required.`, 400);
+        }
+      }
+
+      if (field.key === 'abstract' && field.required) {
+        if (!input.abstract || !input.abstract.trim()) {
+          throw new AppError('VALIDATION_FAILED', `${field.label || 'Project Abstract'} is required.`, 400);
+        }
+      }
+
+      if (field.key === 'repoUrl' && field.required) {
+        if (!input.repoUrl || !input.repoUrl.trim()) {
+          throw new AppError('VALIDATION_FAILED', `${field.label || 'Repository URL'} is required.`, 400);
+        }
+      }
+
+      if (field.key === 'demoUrl' && field.required) {
+        if (!input.demoUrl || !input.demoUrl.trim()) {
+          throw new AppError('VALIDATION_FAILED', `${field.label || 'Demo URL'} is required.`, 400);
+        }
+      }
+
+      if (field.key === 'deckKey' && field.required) {
+        if (!input.deckKey || !input.deckKey.trim()) {
+          throw new AppError('VALIDATION_FAILED', `${field.label || 'Presentation / Deck Document'} is required.`, 400);
+        }
+      }
+
+      // Custom fields check
+      if (
+        !['title', 'abstract', 'repoUrl', 'demoUrl', 'deckKey'].includes(field.key) &&
+        field.required
+      ) {
+        const val = input.customFields?.[field.key];
+        if (val === undefined || val === null || val === '') {
+          throw new AppError('VALIDATION_FAILED', `${field.label} is required.`, 400);
+        }
+      }
+    }
+  }
+
+  // Generic sanity validations
+  if (input.abstract && input.abstract.length > 2000) {
+    throw new AppError('VALIDATION_FAILED', 'Project abstract must not exceed 2000 characters.', 400);
+  }
+
+  if (input.repoUrl && input.repoUrl.trim() && !GITHUB_GITLAB_REGEX.test(input.repoUrl.trim())) {
+    throw new AppError(
+      'VALIDATION_FAILED',
+      'Repository URL must be a valid HTTPS URL on GitHub or GitLab (e.g., https://github.com/org/repo).',
+      400
+    );
+  }
 }
 
 /**
@@ -43,21 +141,7 @@ export async function submitProject(
   teamId: string,
   input: SubmitProjectInput
 ) {
-  // 1. Validate repository URL (must be https github or gitlab)
-  if (!GITHUB_GITLAB_REGEX.test(input.repoUrl)) {
-    throw new AppError(
-      'VALIDATION_FAILED',
-      'Repository URL must be a valid HTTPS URL on GitHub or GitLab (e.g., https://github.com/org/repo).',
-      400
-    );
-  }
-
-  // 2. Validate abstract length
-  if (!input.abstract || input.abstract.length > 2000) {
-    throw new AppError('VALIDATION_FAILED', 'Project abstract must not exceed 2000 characters.', 400);
-  }
-
-  // 3. Verify deck file if provided
+  // Verify deck file if provided
   if (input.deckKey) {
     const head = await headObject(input.deckKey);
     if (!head) {
@@ -73,7 +157,7 @@ export async function submitProject(
   }
 
   return await db.transaction(async (tx) => {
-    // 4. Load team FOR UPDATE
+    // 1. Load team FOR UPDATE
     const [team] = await tx
       .select()
       .from(teams)
@@ -85,7 +169,7 @@ export async function submitProject(
       throw new AppError('NOT_FOUND', 'Team not found.', 404);
     }
 
-    // 5. Verify user is leader or member
+    // 2. Verify user is leader or member
     const [membership] = await tx
       .select({ role: teamMembers.role })
       .from(teamMembers)
@@ -96,7 +180,7 @@ export async function submitProject(
       throw new AppError('FORBIDDEN', 'Only team members can submit project deliverables.', 403);
     }
 
-    // 6. Check event submission deadline
+    // 3. Load event
     const [event] = await tx
       .select()
       .from(events)
@@ -107,14 +191,21 @@ export async function submitProject(
       throw new AppError('NOT_FOUND', 'Event not found.', 404);
     }
 
-    const now = new Date();
-    const deadline = event.submissionDeadlineAt ?? event.endAt;
+    const config = event.projectSubmissionConfig as ProjectSubmissionConfig | null;
 
-    if (now > deadline) {
-      throw new AppError('DEADLINE_PASSED', 'Submission deadline has passed. Submissions are closed.', 403);
-    }
+    // Check existing submission in project_submissions
+    const [existingSub] = await tx
+      .select()
+      .from(projectSubmissions)
+      .where(and(eq(projectSubmissions.eventId, event.id), eq(projectSubmissions.teamId, teamId)))
+      .limit(1);
 
-    // 7. Load members and enforce min team size
+    const hasExisting = Boolean(existingSub || team.submittedAt);
+
+    // Validate against event config (deadline, editability, required fields)
+    validateSubmissionAgainstConfig(config, event, input, hasExisting);
+
+    // 4. Load members and enforce min team size if competition
     const members = await tx
       .select({
         userId: teamMembers.userId,
@@ -138,7 +229,9 @@ export async function submitProject(
       );
     }
 
-    // 8. Ensure snapshot exists (create if absent or still forming)
+    const now = new Date();
+
+    // 5. Ensure snapshot exists
     const [existingSnapshot] = await tx
       .select({ id: teamRosterSnapshots.id })
       .from(teamRosterSnapshots)
@@ -165,13 +258,49 @@ export async function submitProject(
       });
     }
 
-    // 9. Update team submission record
+    // 6. Upsert into project_submissions
+    let savedSubmissionId = existingSub?.id;
+    if (existingSub) {
+      await tx
+        .update(projectSubmissions)
+        .set({
+          projectTitle: input.projectTitle?.trim() || null,
+          projectAbstract: input.abstract?.trim() || null,
+          repoUrl: input.repoUrl?.trim() || null,
+          demoUrl: input.demoUrl ? input.demoUrl.trim() : null,
+          deckKey: input.deckKey || null,
+          customFields: input.customFields || {},
+          updatedAt: now,
+        })
+        .where(eq(projectSubmissions.id, existingSub.id));
+    } else {
+      const [newSub] = await tx
+        .insert(projectSubmissions)
+        .values({
+          eventId: event.id,
+          teamId,
+          userId,
+          projectTitle: input.projectTitle?.trim() || null,
+          projectAbstract: input.abstract?.trim() || null,
+          repoUrl: input.repoUrl?.trim() || null,
+          demoUrl: input.demoUrl ? input.demoUrl.trim() : null,
+          deckKey: input.deckKey || null,
+          customFields: input.customFields || {},
+          status: 'SUBMITTED',
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning();
+      savedSubmissionId = newSub?.id;
+    }
+
+    // 7. Update team submission record for backwards compatibility
     const [updatedTeam] = await tx
       .update(teams)
       .set({
-        projectTitle: input.projectTitle.trim(),
-        projectAbstract: input.abstract.trim(),
-        repoUrl: input.repoUrl.trim(),
+        projectTitle: input.projectTitle?.trim() || null,
+        projectAbstract: input.abstract?.trim() || null,
+        repoUrl: input.repoUrl?.trim() || null,
         demoUrl: input.demoUrl ? input.demoUrl.trim() : null,
         deckKey: input.deckKey || null,
         submittedAt: now,
@@ -181,12 +310,13 @@ export async function submitProject(
       .where(eq(teams.id, teamId))
       .returning();
 
-    // 10. Emit team:update
+    // 8. Emit team:update
     try {
       getIO().to(`team:${teamId}`).emit('team:update' as any, {
         teamId,
         action: 'PROJECT_SUBMITTED',
         submittedAt: now.toISOString(),
+        submissionId: savedSubmissionId,
       });
     } catch {
       // Ignore
@@ -194,6 +324,221 @@ export async function submitProject(
 
     return updatedTeam;
   });
+}
+
+/**
+ * Submits an individual project for an event participant
+ */
+export async function submitIndividualProject(
+  userId: string,
+  eventId: string,
+  input: SubmitProjectInput
+) {
+  return await db.transaction(async (tx) => {
+    // 1. Load event
+    const [event] = await tx
+      .select()
+      .from(events)
+      .where(eq(events.id, eventId))
+      .limit(1);
+
+    if (!event) {
+      throw new AppError('NOT_FOUND', 'Event not found.', 404);
+    }
+
+    // 2. Load user's registration for this event
+    const [reg] = await tx
+      .select()
+      .from(registrations)
+      .where(and(eq(registrations.eventId, eventId), eq(registrations.userId, userId)))
+      .limit(1);
+
+    if (!reg) {
+      throw new AppError('FORBIDDEN', 'You must be registered for this event to submit a project.', 403);
+    }
+
+    const config = event.projectSubmissionConfig as ProjectSubmissionConfig | null;
+
+    // 3. Check existing individual submission
+    const [existingSub] = await tx
+      .select()
+      .from(projectSubmissions)
+      .where(
+        and(
+          eq(projectSubmissions.eventId, eventId),
+          eq(projectSubmissions.userId, userId),
+          isNull(projectSubmissions.teamId)
+        )
+      )
+      .limit(1);
+
+    const hasExisting = Boolean(existingSub);
+
+    // 4. Validate against event config
+    validateSubmissionAgainstConfig(config, event, input, hasExisting);
+
+    // Verify deck if provided
+    if (input.deckKey) {
+      const head = await headObject(input.deckKey);
+      if (!head) {
+        throw new AppError('VALIDATION_FAILED', 'Deck file does not exist in storage.', 400);
+      }
+      if (head.contentType && !ALLOWED_DECK_MIMES.has(head.contentType)) {
+        throw new AppError(
+          'VALIDATION_FAILED',
+          `Invalid deck mime type '${head.contentType}'. Only PDF and presentation formats are allowed.`,
+          400
+        );
+      }
+    }
+
+    const now = new Date();
+
+    // 5. Upsert into project_submissions
+    let savedSubmission: typeof projectSubmissions.$inferSelect;
+    if (existingSub) {
+      const [updated] = await tx
+        .update(projectSubmissions)
+        .set({
+          projectTitle: input.projectTitle?.trim() || null,
+          projectAbstract: input.abstract?.trim() || null,
+          repoUrl: input.repoUrl?.trim() || null,
+          demoUrl: input.demoUrl ? input.demoUrl.trim() : null,
+          deckKey: input.deckKey || null,
+          customFields: input.customFields || {},
+          registrationId: reg.id,
+          updatedAt: now,
+        })
+        .where(eq(projectSubmissions.id, existingSub.id))
+        .returning();
+      savedSubmission = updated!;
+    } else {
+      const [created] = await tx
+        .insert(projectSubmissions)
+        .values({
+          eventId,
+          teamId: null,
+          userId,
+          registrationId: reg.id,
+          projectTitle: input.projectTitle?.trim() || null,
+          projectAbstract: input.abstract?.trim() || null,
+          repoUrl: input.repoUrl?.trim() || null,
+          demoUrl: input.demoUrl ? input.demoUrl.trim() : null,
+          deckKey: input.deckKey || null,
+          customFields: input.customFields || {},
+          status: 'SUBMITTED',
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning();
+      savedSubmission = created!;
+    }
+
+    return savedSubmission;
+  });
+}
+
+/**
+ * Unified submit endpoint: automatically detects whether the user is in a team
+ * for this event or submitting as an individual.
+ */
+export async function submitProjectOrDeliverables(
+  userId: string,
+  eventId: string,
+  input: SubmitProjectInput
+) {
+  // Check if user has an active team for this event
+  const [memberRow] = await db
+    .select({ teamId: teamMembers.teamId })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.eventId, eventId), eq(teamMembers.userId, userId)))
+    .limit(1);
+
+  if (memberRow) {
+    return await submitProject(userId, memberRow.teamId, input);
+  }
+
+  return await submitIndividualProject(userId, eventId, input);
+}
+
+/**
+ * Gets submission status, details, and permissions for the current user and event
+ */
+export async function getSubmissionForEventAndUser(userId: string, eventId: string) {
+  const [event] = await db
+    .select()
+    .from(events)
+    .where(eq(events.id, eventId))
+    .limit(1);
+
+  if (!event) {
+    throw new AppError('NOT_FOUND', 'Event not found.', 404);
+  }
+
+  const config = (event.projectSubmissionConfig as ProjectSubmissionConfig | null) || DEFAULT_PROJECT_SUBMISSION_CONFIG;
+
+  // Check team membership
+  const [memberRow] = await db
+    .select({
+      teamId: teamMembers.teamId,
+      teamName: teams.name,
+      teamStatus: teams.status,
+      leaderId: teams.leaderId,
+    })
+    .from(teamMembers)
+    .innerJoin(teams, eq(teamMembers.teamId, teams.id))
+    .where(and(eq(teamMembers.eventId, eventId), eq(teamMembers.userId, userId)))
+    .limit(1);
+
+  // Check individual registration
+  const [registration] = await db
+    .select({ id: registrations.id, status: registrations.status })
+    .from(registrations)
+    .where(and(eq(registrations.eventId, eventId), eq(registrations.userId, userId)))
+    .limit(1);
+
+  let submission = null;
+  if (memberRow) {
+    const [sub] = await db
+      .select()
+      .from(projectSubmissions)
+      .where(and(eq(projectSubmissions.eventId, eventId), eq(projectSubmissions.teamId, memberRow.teamId)))
+      .limit(1);
+    submission = sub || null;
+  } else if (registration) {
+    const [sub] = await db
+      .select()
+      .from(projectSubmissions)
+      .where(
+        and(
+          eq(projectSubmissions.eventId, eventId),
+          eq(projectSubmissions.userId, userId),
+          isNull(projectSubmissions.teamId)
+        )
+      )
+      .limit(1);
+    submission = sub || null;
+  }
+
+  const now = new Date();
+  const deadline = config.deadline
+    ? new Date(config.deadline)
+    : (event.submissionDeadlineAt ?? event.endAt);
+  const isDeadlinePassed = now > deadline;
+
+  const canEdit =
+    Boolean(config.enabled) &&
+    !isDeadlinePassed &&
+    (!submission || config.allowEditAfterSubmission);
+
+  return {
+    config,
+    submission,
+    team: memberRow || null,
+    isRegistered: Boolean(registration || memberRow),
+    isDeadlinePassed,
+    canEdit,
+  };
 }
 
 /**
@@ -236,44 +581,58 @@ export async function listSubmissionsForEvent(userId: string, eventId: string) {
     }
   }
 
-  const submittedTeams = await db
+  // Load from project_submissions
+  const submissions = await db
     .select({
-      id: teams.id,
-      name: teams.name,
-      leaderId: teams.leaderId,
-      projectTitle: teams.projectTitle,
-      projectAbstract: teams.projectAbstract,
-      repoUrl: teams.repoUrl,
-      demoUrl: teams.demoUrl,
-      deckKey: teams.deckKey,
-      submittedAt: teams.submittedAt,
-      status: teams.status,
+      id: projectSubmissions.id,
+      eventId: projectSubmissions.eventId,
+      teamId: projectSubmissions.teamId,
+      userId: projectSubmissions.userId,
+      registrationId: projectSubmissions.registrationId,
+      projectTitle: projectSubmissions.projectTitle,
+      projectAbstract: projectSubmissions.projectAbstract,
+      repoUrl: projectSubmissions.repoUrl,
+      demoUrl: projectSubmissions.demoUrl,
+      deckKey: projectSubmissions.deckKey,
+      customFields: projectSubmissions.customFields,
+      status: projectSubmissions.status,
+      createdAt: projectSubmissions.createdAt,
+      updatedAt: projectSubmissions.updatedAt,
+      submitterName: users.fullName,
+      submitterEmail: users.email,
+      teamName: teams.name,
     })
-    .from(teams)
-    .where(and(eq(teams.eventId, eventId), sql`${teams.submittedAt} IS NOT NULL`))
-    .orderBy(asc(teams.submittedAt));
+    .from(projectSubmissions)
+    .innerJoin(users, eq(projectSubmissions.userId, users.id))
+    .leftJoin(teams, eq(projectSubmissions.teamId, teams.id))
+    .where(eq(projectSubmissions.eventId, eventId))
+    .orderBy(asc(projectSubmissions.createdAt));
 
-  // Build response with downloadable presigned GET links
+  // Build response with downloadable presigned GET links & members
   const submissionsWithLinks = await Promise.all(
-    submittedTeams.map(async (t) => {
+    submissions.map(async (sub) => {
       let deckDownloadUrl: string | null = null;
-      if (t.deckKey) {
-        deckDownloadUrl = await presignGet(t.deckKey, 3600);
+      if (sub.deckKey) {
+        deckDownloadUrl = await presignGet(sub.deckKey, 3600);
       }
 
-      // Load members
-      const members = await db
-        .select({
-          userId: teamMembers.userId,
-          fullName: users.fullName,
-          email: users.email,
-        })
-        .from(teamMembers)
-        .innerJoin(users, eq(teamMembers.userId, users.id))
-        .where(eq(teamMembers.teamId, t.id));
+      let members: Array<{ userId: string; fullName: string | null; email: string }> = [];
+      if (sub.teamId) {
+        members = await db
+          .select({
+            userId: teamMembers.userId,
+            fullName: users.fullName,
+            email: users.email,
+          })
+          .from(teamMembers)
+          .innerJoin(users, eq(teamMembers.userId, users.id))
+          .where(eq(teamMembers.teamId, sub.teamId));
+      }
 
       return {
-        ...t,
+        ...sub,
+        id: sub.teamId || sub.id,
+        submissionId: sub.id,
         deckDownloadUrl,
         members,
       };

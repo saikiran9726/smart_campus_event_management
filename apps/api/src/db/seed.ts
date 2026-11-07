@@ -48,7 +48,18 @@ export async function runSeed(): Promise<void> {
       role: UserRole.ADMIN,
       phone: '+91 9876543210',
     })
-    .onConflictDoNothing({ target: users.email })
+    .onConflictDoUpdate({
+      target: users.email,
+      set: {
+        clerkId: 'user_admin_001',
+        fullName: 'System Administrator',
+        role: UserRole.ADMIN,
+        strikeCount: 0,
+        consecutiveNoShows: 0,
+        cooldownUntil: null,
+        deletedAt: null,
+      },
+    })
     .returning();
 
   const [facultyAdvisor] = await db
@@ -61,7 +72,18 @@ export async function runSeed(): Promise<void> {
       role: UserRole.FACULTY,
       phone: '+91 9876543211',
     })
-    .onConflictDoNothing({ target: users.email })
+    .onConflictDoUpdate({
+      target: users.email,
+      set: {
+        clerkId: 'user_faculty_001',
+        fullName: 'Dr. Ramesh Sharma',
+        role: UserRole.FACULTY,
+        strikeCount: 0,
+        consecutiveNoShows: 0,
+        cooldownUntil: null,
+        deletedAt: null,
+      },
+    })
     .returning();
 
   const [organizerUser] = await db
@@ -76,7 +98,18 @@ export async function runSeed(): Promise<void> {
       role: UserRole.ORGANIZER,
       phone: '+91 9876543212',
     })
-    .onConflictDoNothing({ target: users.email })
+    .onConflictDoUpdate({
+      target: users.email,
+      set: {
+        clerkId: 'user_organizer_001',
+        fullName: 'Priya Patel',
+        role: UserRole.ORGANIZER,
+        strikeCount: 0,
+        consecutiveNoShows: 0,
+        cooldownUntil: null,
+        deletedAt: null,
+      },
+    })
     .returning();
 
   const [organizerNoClubUser] = await db
@@ -91,7 +124,18 @@ export async function runSeed(): Promise<void> {
       role: UserRole.ORGANIZER,
       phone: '+91 9876543299',
     })
-    .onConflictDoNothing({ target: users.email })
+    .onConflictDoUpdate({
+      target: users.email,
+      set: {
+        clerkId: 'user_organizer_no_club',
+        fullName: 'Alex Solo Organizer',
+        role: UserRole.ORGANIZER,
+        strikeCount: 0,
+        consecutiveNoShows: 0,
+        cooldownUntil: null,
+        deletedAt: null,
+      },
+    })
     .returning();
 
   const [studentUser] = await db
@@ -106,7 +150,18 @@ export async function runSeed(): Promise<void> {
       role: UserRole.STUDENT,
       phone: '+91 9876543213',
     })
-    .onConflictDoNothing({ target: users.email })
+    .onConflictDoUpdate({
+      target: users.email,
+      set: {
+        clerkId: 'user_student_001',
+        fullName: 'Arjun Mehta',
+        role: UserRole.STUDENT,
+        strikeCount: 0,
+        consecutiveNoShows: 0,
+        cooldownUntil: null,
+        deletedAt: null,
+      },
+    })
     .returning();
 
   const adminId =

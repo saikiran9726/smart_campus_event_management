@@ -13,7 +13,7 @@ import {
   teams,
   users,
 } from '../db/schema';
-import { getIO } from '../realtime/io';
+import { safeGetIO } from '../realtime/io';
 
 export interface AutoLockResult {
   lockedCount: number;
@@ -54,6 +54,10 @@ export async function autoLockTeamsForEvent(eventId: string): Promise<AutoLockRe
   let disqualifiedCount = 0;
 
   for (const team of formingTeams) {
+    let teamMembersList: { userId: string; fullName: string; rollNumber: string | null; joinedAt: Date }[] = [];
+    let isDisqualified = false;
+    const now = new Date();
+
     await db.transaction(async (tx) => {
       // Load current members
       const members = await tx
@@ -68,7 +72,7 @@ export async function autoLockTeamsForEvent(eventId: string): Promise<AutoLockRe
         .where(eq(teamMembers.teamId, team.id))
         .orderBy(asc(teamMembers.joinedAt));
 
-      const now = new Date();
+      teamMembersList = members;
 
       if (members.length >= minTeamSize) {
         // Lock team and snapshot
@@ -96,16 +100,6 @@ export async function autoLockTeamsForEvent(eventId: string): Promise<AutoLockRe
         });
 
         lockedCount++;
-
-        try {
-          getIO().to(`team:${team.id}`).emit('team:update' as any, {
-            teamId: team.id,
-            action: 'ROSTER_LOCKED',
-            lockedAt: now.toISOString(),
-          });
-        } catch {
-          // Ignore
-        }
       } else {
         // Disqualify under-minimum team
         await tx
@@ -114,10 +108,15 @@ export async function autoLockTeamsForEvent(eventId: string): Promise<AutoLockRe
           .where(eq(teams.id, team.id));
 
         disqualifiedCount++;
+        isDisqualified = true;
+      }
+    });
 
-        // Enqueue comms notification to all team members
-        for (const member of members) {
-          await tx
+    if (isDisqualified) {
+      // Enqueue comms notification to all team members (post-commit, non-fatal)
+      for (const member of teamMembersList) {
+        try {
+          await db
             .insert(notifications)
             .values({
               userId: member.userId,
@@ -134,19 +133,31 @@ export async function autoLockTeamsForEvent(eventId: string): Promise<AutoLockRe
               runAt: now,
             })
             .onConflictDoNothing();
-        }
-
-        try {
-          getIO().to(`team:${team.id}`).emit('team:update' as any, {
-            teamId: team.id,
-            action: 'TEAM_DISQUALIFIED',
-            reason: `Minimum team size (${minTeamSize}) not reached`,
-          });
         } catch {
-          // Ignore
+          // Non-fatal: notification enqueue failure must not abort disqualification
         }
       }
-    });
+
+      try {
+        safeGetIO()?.to(`team:${team.id}`).emit('team:update' as any, {
+          teamId: team.id,
+          action: 'TEAM_DISQUALIFIED',
+          reason: `Minimum team size (${minTeamSize}) not reached`,
+        });
+      } catch {
+        // Ignore
+      }
+    } else {
+      try {
+        safeGetIO()?.to(`team:${team.id}`).emit('team:update' as any, {
+          teamId: team.id,
+          action: 'ROSTER_LOCKED',
+          lockedAt: now.toISOString(),
+        });
+      } catch {
+        // Ignore
+      }
+    }
   }
 
   return { lockedCount, disqualifiedCount };

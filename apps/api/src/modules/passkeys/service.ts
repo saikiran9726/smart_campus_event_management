@@ -48,6 +48,8 @@ export interface ScannerTokenPayload {
   sessionId: string;
   passkeyId: string;
   eventId: string;
+  eventTitle?: string;
+  userId?: string;
   volunteerName: string;
   passkeyLabel: string;
   kind: 'scanner';
@@ -256,6 +258,7 @@ export async function unlockScanner(params: {
     sessionId: session!.id,
     passkeyId: passkey.passkey.id,
     eventId: passkey.event.id,
+    eventTitle: passkey.event.title,
     volunteerName,
     passkeyLabel: passkey.passkey.label,
     kind: 'scanner',

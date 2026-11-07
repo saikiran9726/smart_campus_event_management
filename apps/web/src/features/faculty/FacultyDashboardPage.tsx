@@ -113,7 +113,7 @@ export const FacultyDashboardPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <GraduationCap className="h-7 w-7 text-indigo-600" />
+            <GraduationCap className="h-7 w-7 text-teal-600 dark:text-teal-400" />
             <h1 className="text-3xl font-extrabold tracking-tight">Faculty Dashboard</h1>
           </div>
           <p className="text-muted-foreground text-sm">
@@ -187,7 +187,7 @@ export const FacultyDashboardPage: React.FC = () => {
                         proposalDecisionMutation.mutate({ id: p.id, status: 'APPROVED' })
                       }
                       disabled={proposalDecisionMutation.isPending}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
+                      className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs"
                     >
                       Approve
                     </Button>
@@ -231,7 +231,7 @@ export const FacultyDashboardPage: React.FC = () => {
                       size="sm"
                       onClick={() => signOffMutation.mutate(exp.id)}
                       disabled={signOffMutation.isPending}
-                      className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs gap-1.5"
+                      className="bg-teal-600 hover:bg-teal-700 text-white text-xs gap-1.5"
                     >
                       <CheckCircle2 className="h-3.5 w-3.5" />
                       Sign Off

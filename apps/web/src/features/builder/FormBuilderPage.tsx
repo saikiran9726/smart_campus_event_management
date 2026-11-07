@@ -23,6 +23,9 @@ import {
   GripVertical,
   Plus,
   Trash2,
+  Copy,
+  ArrowUp,
+  ArrowDown,
   Eye,
   ArrowLeft,
   CheckCircle2,
@@ -31,6 +34,11 @@ import {
   FileText,
   Save,
   HelpCircle,
+  Sparkles,
+  Layers,
+  Send,
+  Globe,
+  Check,
 } from 'lucide-react';
 import { QuestionType } from '@eventora/shared';
 import { api } from '@/lib/api';
@@ -40,7 +48,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/components/ui/toast';
 
@@ -51,6 +59,9 @@ export interface FormQuestionItem {
   type: QuestionType;
   label: string;
   helpText?: string | null;
+  placeholder?: string | null;
+  defaultValue?: string | null;
+  visibility?: string | null;
   required: boolean;
   options?: string[] | null;
   validation?: Record<string, any> | null;
@@ -61,6 +72,10 @@ interface FormResponse {
   eventId: string;
   frozen: boolean;
   frozenAt: string | null;
+  formVersion?: number;
+  formPublished?: boolean;
+  registrationMode?: string;
+  approvalRequired?: boolean;
   registeredCount: number;
   questions: FormQuestionItem[];
 }
@@ -71,30 +86,48 @@ const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
   [QuestionType.NUMBER]: 'Number',
   [QuestionType.EMAIL]: 'Email Address',
   [QuestionType.PHONE]: 'Phone Number',
-  [QuestionType.SINGLE_SELECT]: 'Single Choice (Radio)',
+  [QuestionType.SINGLE_SELECT]: 'Single Choice (Select)',
   [QuestionType.MULTI_SELECT]: 'Multiple Choice (Checkboxes)',
   [QuestionType.CHECKBOX]: 'Single Checkbox (Agreement)',
   [QuestionType.DATE]: 'Date Picker',
   [QuestionType.FILE_UPLOAD]: 'File Upload',
+  [QuestionType.DROPDOWN]: 'Dropdown (Select One)',
+  [QuestionType.RADIO]: 'Radio (Option Buttons)',
+  [QuestionType.URL]: 'Website / Portfolio URL',
+  [QuestionType.YES_NO]: 'Yes / No Choice',
+  [QuestionType.INSTRUCTION]: 'Instruction / Notice Text',
 };
 
 // Sortable Question Row
 interface SortableQuestionCardProps {
   question: FormQuestionItem;
   index: number;
+  totalCount: number;
   isFrozen: boolean;
   onUpdate: (id: string, updates: Partial<FormQuestionItem>) => void;
   onDelete: (id: string) => void;
+  onDuplicate: (id: string) => void;
+  onMove: (id: string, direction: 'up' | 'down') => void;
 }
 
 function SortableQuestionCard({
   question,
   index,
+  totalCount,
   isFrozen,
   onUpdate,
   onDelete,
+  onDuplicate,
+  onMove,
 }: SortableQuestionCardProps) {
   const isQuestionLocked = isFrozen && !question.addedAfterFreeze;
+  const isInstruction = question.type === QuestionType.INSTRUCTION;
+  const hasOptions =
+    question.type === QuestionType.SINGLE_SELECT ||
+    question.type === QuestionType.MULTI_SELECT ||
+    question.type === QuestionType.DROPDOWN ||
+    question.type === QuestionType.RADIO;
+
   const {
     attributes,
     listeners,
@@ -107,115 +140,143 @@ function SortableQuestionCard({
     disabled: isQuestionLocked,
   });
 
-  const style = {
+  const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
   };
 
-  const [showValidation, setShowValidation] = useState(
-    !!(
-      question.validation &&
-      Object.keys(question.validation).length > 0
-    )
-  );
-
   const [newOption, setNewOption] = useState('');
+  const [showValidation, setShowValidation] = useState(false);
 
   const handleAddOption = () => {
     if (!newOption.trim()) return;
-    const current = question.options ?? [];
-    onUpdate(question.id, { options: [...current, newOption.trim()] });
+    const currentOptions = question.options ?? [];
+    onUpdate(question.id, { options: [...currentOptions, newOption.trim()] });
     setNewOption('');
   };
 
   const handleRemoveOption = (optIndex: number) => {
-    const current = question.options ?? [];
-    onUpdate(question.id, {
-      options: current.filter((_, i) => i !== optIndex),
-    });
+    const currentOptions = question.options ?? [];
+    const next = currentOptions.filter((_, i) => i !== optIndex);
+    onUpdate(question.id, { options: next });
   };
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`group relative rounded-xl border bg-card p-5 shadow-sm transition-all ${
+      className={`relative rounded-xl border bg-card p-4 shadow-sm transition-all ${
         isQuestionLocked
-          ? 'border-amber-200/50 bg-amber-500/[0.02] dark:border-amber-900/30'
-          : 'border-border hover:border-border/80 focus-within:border-indigo-500/50'
+          ? 'border-amber-200/60 dark:border-amber-900/40 bg-amber-50/20 dark:bg-amber-950/10'
+          : 'border-border hover:border-border/80'
       }`}
-      data-testid={`question-item-${question.id}`}
+      data-testid={`question-card-${question.id}`}
     >
       <div className="flex items-start gap-3">
-        {/* Drag Handle */}
-        <button
-          type="button"
-          {...attributes}
-          {...listeners}
-          disabled={isQuestionLocked}
-          aria-label={`Reorder question ${index + 1}: ${question.label}`}
-          className={`mt-2 rounded p-1 text-muted-foreground transition-colors ${
-            isQuestionLocked
-              ? 'cursor-not-allowed opacity-30'
-              : 'cursor-grab active:cursor-grabbing hover:bg-muted hover:text-foreground'
-          }`}
-          data-testid={`drag-handle-${question.id}`}
-        >
-          <GripVertical className="h-5 w-5" />
-        </button>
+        {/* Drag Handle & Move Controls */}
+        <div className="flex flex-col items-center gap-1 pt-1 shrink-0">
+          {!isQuestionLocked ? (
+            <button
+              type="button"
+              {...attributes}
+              {...listeners}
+              className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground touch-none"
+              aria-label="Reorder question"
+              data-testid={`drag-handle-${question.id}`}
+            >
+              <GripVertical className="h-4 w-4" />
+            </button>
+          ) : (
+            <Lock className="h-4 w-4 text-amber-500/70" />
+          )}
 
-        {/* Content */}
-        <div className="flex-1 space-y-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-semibold text-muted-foreground tnum">
+          {!isFrozen && (
+            <div className="flex flex-col gap-0.5 mt-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={index === 0}
+                onClick={() => onMove(question.id, 'up')}
+                className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                aria-label="Move question up"
+              >
+                <ArrowUp className="h-3 w-3" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={index === totalCount - 1}
+                onClick={() => onMove(question.id, 'down')}
+                className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                aria-label="Move question down"
+              >
+                <ArrowDown className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {/* Question Details */}
+        <div className="flex-1 space-y-3 min-w-0">
+          {/* Header Row */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono font-bold text-muted-foreground tnum">
                 #{index + 1}
               </span>
-              {isQuestionLocked ? (
-                <Badge
-                  variant="outline"
-                  data-testid="question-locked-icon"
-                  className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-800 flex items-center gap-1 text-[11px]"
-                >
-                  <Lock className="h-3 w-3" />
-                  Locked (Frozen)
+              <Badge variant="outline" className="text-[10px] font-medium uppercase tracking-wider">
+                {QUESTION_TYPE_LABELS[question.type] || question.type}
+              </Badge>
+              {isQuestionLocked && (
+                <Badge variant="secondary" className="text-[10px] bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-300" data-testid="question-locked-icon">
+                  Locked
                 </Badge>
-              ) : question.addedAfterFreeze ? (
-                <Badge
-                  variant="outline"
-                  className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800 text-[11px]"
-                >
-                  Added Post-Freeze (Optional)
-                </Badge>
-              ) : null}
+              )}
             </div>
 
             <div className="flex items-center gap-3">
-              {/* Required Switch */}
-              <div className="flex items-center gap-2">
-                <Switch
-                  id={`required-${question.id}`}
-                  checked={question.required}
-                  disabled={isFrozen}
-                  onCheckedChange={(val) => {
-                    if (isFrozen && val) {
-                      toast.error('Form is frozen: only optional questions are permitted.');
-                      return;
-                    }
-                    onUpdate(question.id, { required: val });
-                  }}
-                  data-testid={`switch-required-${question.id}`}
-                />
-                <Label
-                  htmlFor={`required-${question.id}`}
-                  className="text-xs font-medium cursor-pointer"
-                >
-                  Required
-                </Label>
-              </div>
+              {/* Required Switch (Hidden for INSTRUCTION) */}
+              {!isInstruction && (
+                <div className="flex items-center gap-1.5">
+                  <Switch
+                    id={`required-${question.id}`}
+                    checked={question.required}
+                    disabled={isFrozen}
+                    onCheckedChange={(val) => {
+                      if (isFrozen && val) {
+                        toast.error('Form is frozen: only optional questions are permitted.');
+                        return;
+                      }
+                      onUpdate(question.id, { required: val });
+                    }}
+                    data-testid={`switch-required-${question.id}`}
+                  />
+                  <Label
+                    htmlFor={`required-${question.id}`}
+                    className="text-xs font-medium cursor-pointer"
+                  >
+                    Required
+                  </Label>
+                </div>
+              )}
 
-              {/* Delete Button (Hidden/Disabled when frozen) */}
+              {/* Duplicate Button */}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => onDuplicate(question.id)}
+                className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                aria-label={`Duplicate question ${question.label}`}
+                title="Duplicate question"
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
+
+              {/* Delete Button */}
               {!isQuestionLocked && (
                 <Button
                   type="button"
@@ -235,12 +296,14 @@ function SortableQuestionCard({
           {/* Question Label & Type */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="md:col-span-2 space-y-1">
-              <Label className="text-xs text-muted-foreground">Question Label</Label>
+              <Label className="text-xs text-muted-foreground">
+                {isInstruction ? 'Notice Heading / Title' : 'Question Label'}
+              </Label>
               <Input
                 value={question.label}
                 disabled={isQuestionLocked}
                 onChange={(e) => onUpdate(question.id, { label: e.target.value })}
-                placeholder="e.g. What is your GitHub profile?"
+                placeholder={isInstruction ? 'e.g. Hackathon Code of Conduct Notice' : 'e.g. What is your GitHub profile?'}
                 className="font-medium"
                 data-testid={`input-label-${question.id}`}
               />
@@ -269,24 +332,43 @@ function SortableQuestionCard({
             </div>
           </div>
 
-          {/* Help Text (Allowed even when frozen) */}
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground flex items-center gap-1">
-              <HelpCircle className="h-3 w-3" />
-              Help Text / Instructions (optional)
-            </Label>
-            <Input
-              value={question.helpText ?? ''}
-              onChange={(e) => onUpdate(question.id, { helpText: e.target.value })}
-              placeholder="e.g. Include https:// prefix for valid links"
-              className="text-xs text-muted-foreground"
-              data-testid={`input-helptext-${question.id}`}
-            />
+          {/* Placeholder (if applicable) & Help Text */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Placeholder Text (optional)</Label>
+              <Input
+                value={question.placeholder ?? ''}
+                disabled={isQuestionLocked}
+                onChange={(e) => onUpdate(question.id, { placeholder: e.target.value })}
+                placeholder="e.g. https://github.com/..."
+                className="text-xs text-muted-foreground"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                <HelpCircle className="h-3 w-3" />
+                Help Text / Subtitle (optional)
+              </Label>
+              <Input
+                value={question.helpText ?? ''}
+                onChange={(e) => onUpdate(question.id, { helpText: e.target.value })}
+                placeholder="e.g. Minimum 20 characters required"
+                className="text-xs text-muted-foreground"
+                data-testid={`input-helptext-${question.id}`}
+              />
+            </div>
           </div>
 
+          {/* Special notice for INSTRUCTION type */}
+          {isInstruction && (
+            <div className="p-3 rounded-lg bg-muted/40 border border-border/50 text-xs text-muted-foreground">
+              ðŸ’¡ <strong>Display-Only Notice:</strong> This text block will be shown prominently to attendees during registration. No response input will be collected.
+            </div>
+          )}
+
           {/* Type-Specific: Select Options */}
-          {(question.type === QuestionType.SINGLE_SELECT ||
-            question.type === QuestionType.MULTI_SELECT) && (
+          {hasOptions && (
             <div className="space-y-2 pt-2 border-t border-border/50">
               <Label className="text-xs font-semibold">Options List</Label>
               <div className="space-y-1.5">
@@ -350,20 +432,19 @@ function SortableQuestionCard({
           )}
 
           {/* Validation Rules Toggle */}
-          {!isQuestionLocked && (
-            <div className="pt-2">
+          {!isInstruction && (
+            <div className="pt-2 border-t border-border/40">
               <button
                 type="button"
                 onClick={() => setShowValidation(!showValidation)}
-                className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1.5"
-                data-testid={`toggle-validation-${question.id}`}
+                className="text-xs font-medium text-muted-foreground hover:text-foreground flex items-center gap-1.5"
               >
                 <Sliders className="h-3 w-3" />
-                {showValidation ? 'Hide validation rules' : 'Configure validation rules'}
+                <span>{showValidation ? 'Hide validation rules' : 'Configure validation rules'}</span>
               </button>
 
               {showValidation && (
-                <div className="mt-2.5 p-3 rounded-lg bg-muted/40 border border-border/50 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3">
                   {(question.type === QuestionType.SHORT_TEXT ||
                     question.type === QuestionType.LONG_TEXT) && (
                     <>
@@ -396,38 +477,6 @@ function SortableQuestionCard({
                               },
                             })
                           }
-                          className="h-8 text-xs mt-1"
-                        />
-                      </div>
-                      <div className="sm:col-span-2">
-                        <Label className="text-[11px] text-muted-foreground">Regex Pattern</Label>
-                        <Input
-                          value={question.validation?.regexPattern ?? ''}
-                          onChange={(e) =>
-                            onUpdate(question.id, {
-                              validation: {
-                                ...question.validation,
-                                regexPattern: e.target.value || undefined,
-                              },
-                            })
-                          }
-                          placeholder="e.g. ^[0-9]{2}[A-Z]{3}[0-9]{4}$"
-                          className="h-8 text-xs font-mono mt-1"
-                        />
-                      </div>
-                      <div className="sm:col-span-2">
-                        <Label className="text-[11px] text-muted-foreground">Regex Error Message</Label>
-                        <Input
-                          value={question.validation?.regexErrorMessage ?? ''}
-                          onChange={(e) =>
-                            onUpdate(question.id, {
-                              validation: {
-                                ...question.validation,
-                                regexErrorMessage: e.target.value || undefined,
-                              },
-                            })
-                          }
-                          placeholder="Must match standard college roll number format"
                           className="h-8 text-xs mt-1"
                         />
                       </div>
@@ -564,9 +613,13 @@ export const FormBuilderPage: React.FC = () => {
 
   const [questions, setQuestions] = useState<FormQuestionItem[]>([]);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+  const [selectedTemplateKey, setSelectedTemplateKey] = useState('HACKATHON');
+  const [replaceExisting, setReplaceExisting] = useState(true);
   const [previewAnswers, setPreviewAnswers] = useState<Record<string, any>>({});
   const [previewErrors, setPreviewErrors] = useState<Record<string, string>>({});
   const [isValidatingPreview, setIsValidatingPreview] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
 
   // Fetch form data
   const { data: formData, isLoading, isError, refetch } = useQuery<FormResponse>({
@@ -578,6 +631,15 @@ export const FormBuilderPage: React.FC = () => {
     enabled: !!eventId,
   });
 
+  // Fetch templates
+  const { data: templatesData } = useQuery<{ templates: any[] }>({
+    queryKey: ['events', eventId, 'form', 'templates'],
+    queryFn: async () => {
+      return await api.get<{ templates: any[] }>(`/events/${eventId}/form/templates`);
+    },
+    enabled: !!eventId,
+  });
+
   useEffect(() => {
     if (formData?.questions) {
       setQuestions([...formData.questions].sort((a, b) => a.position - b.position));
@@ -585,6 +647,8 @@ export const FormBuilderPage: React.FC = () => {
   }, [formData]);
 
   const isFrozen = formData?.frozen ?? false;
+  const isPublished = formData?.formPublished ?? true;
+  const formVersion = formData?.formVersion ?? 1;
   const registeredCount = formData?.registeredCount ?? 0;
 
   // DnD Sensors
@@ -609,7 +673,6 @@ export const FormBuilderPage: React.FC = () => {
 
     if (oldIndex === -1 || newIndex === -1) return;
 
-    // If frozen, ensure no pre-freeze questions change order relative to each other
     if (isFrozen) {
       const activeQuestion = questions[oldIndex];
       const overQuestion = questions[newIndex];
@@ -637,6 +700,56 @@ export const FormBuilderPage: React.FC = () => {
     } catch (err: any) {
       setQuestions(previousQuestions);
       toast.error(err?.message || 'Failed to update order. Reverted.');
+    }
+  };
+
+  // Move Question Up/Down Button Handler
+  const handleMoveQuestion = async (id: string, direction: 'up' | 'down') => {
+    const index = questions.findIndex((q) => q.id === id);
+    if (index === -1) return;
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= questions.length) return;
+
+    if (isFrozen) {
+      const q1 = questions[index];
+      const q2 = questions[targetIndex];
+      if (!q1?.addedAfterFreeze || !q2?.addedAfterFreeze) {
+        toast.error('Form is frozen: cannot reorder existing pre-freeze questions.');
+        return;
+      }
+    }
+
+    const previousQuestions = [...questions];
+    const reordered = arrayMove(questions, index, targetIndex).map((q, idx) => ({
+      ...q,
+      position: idx + 1,
+    }));
+
+    setQuestions(reordered);
+
+    try {
+      await api.put(`/events/${eventId}/form/order`, {
+        orderedIds: reordered.map((q) => q.id),
+      });
+      toast.success('Question order updated.');
+    } catch (err: any) {
+      setQuestions(previousQuestions);
+      toast.error(err?.message || 'Failed to move question.');
+    }
+  };
+
+  // Duplicate Question Handler
+  const handleDuplicateQuestion = async (id: string) => {
+    try {
+      const res = await api.post<{ question: FormQuestionItem }>(
+        `/events/${eventId}/form/questions/${id}/duplicate`,
+        {}
+      );
+      setQuestions((prev) => [...prev, res.question]);
+      queryClient.invalidateQueries({ queryKey: ['events', eventId, 'form'] });
+      toast.success('Question duplicated.');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to duplicate question.');
     }
   };
 
@@ -679,7 +792,6 @@ export const FormBuilderPage: React.FC = () => {
     id: string,
     updates: Partial<FormQuestionItem>
   ) => {
-    // If frozen and attempting to make required, block in UI
     if (isFrozen && updates.required === true) {
       toast.error('Form is frozen: questions cannot be made required.');
       return;
@@ -724,6 +836,40 @@ export const FormBuilderPage: React.FC = () => {
     }
   };
 
+  // Apply Template Handler
+  const handleApplyTemplate = async () => {
+    try {
+      await api.post(`/events/${eventId}/form/apply-template`, {
+        templateKey: selectedTemplateKey,
+        replaceExisting,
+      });
+      setIsTemplateModalOpen(false);
+      toast.success('Template applied successfully!');
+      refetch();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to apply template.');
+    }
+  };
+
+  // Publish / Unpublish Toggle
+  const handleTogglePublish = async () => {
+    setIsPublishing(true);
+    try {
+      if (isPublished) {
+        await api.post(`/events/${eventId}/form/unpublish`, {});
+        toast.success('Form unpublished. Registrations are paused.');
+      } else {
+        const res = await api.post<{ formVersion: number }>(`/events/${eventId}/form/publish`, {});
+        toast.success(`Form published! Active schema snapshot saved (v${res.formVersion}).`);
+      }
+      refetch();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to change publish status.');
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
   // Test Preview Validation
   const handleTestValidation = async () => {
     setIsValidatingPreview(true);
@@ -756,6 +902,10 @@ export const FormBuilderPage: React.FC = () => {
     );
   }
 
+  const selectedTemplate = templatesData?.templates?.find(
+    (t: any) => t.key === selectedTemplateKey
+  );
+
   return (
     <div className="container max-w-4xl py-8 px-4 sm:px-6 mx-auto space-y-6">
       {/* Top Header */}
@@ -771,14 +921,38 @@ export const FormBuilderPage: React.FC = () => {
             >
               <ArrowLeft className="h-4 w-4" />
             </Button>
-            <h1 className="text-2xl font-bold tracking-tight">Dynamic Form Builder</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Registration Form Builder</h1>
+            <Badge variant="outline" className="font-mono text-xs">
+              v{formVersion}
+            </Badge>
+            {isPublished ? (
+              <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 text-[11px]">
+                Published
+              </Badge>
+            ) : (
+              <Badge variant="secondary" className="text-[11px]">
+                Draft (Unpublished)
+              </Badge>
+            )}
           </div>
           <p className="text-sm text-muted-foreground">
-            Configure attendee registration questions, custom validation, and file upload requirements.
+            Configure attendee questions, presets, and validation. Historical versions are automatically preserved.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Apply Template Button */}
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setIsTemplateModalOpen(true)}
+            className="gap-2 shadow-sm"
+          >
+            <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+            <span>Templates</span>
+          </Button>
+
+          {/* Preview Form Button */}
           <Button
             type="button"
             variant="outline"
@@ -791,9 +965,22 @@ export const FormBuilderPage: React.FC = () => {
             data-testid="btn-preview-modal"
           >
             <Eye className="h-4 w-4" />
-            <span>Preview Form</span>
+            <span>Preview</span>
           </Button>
 
+          {/* Publish / Unpublish Toggle */}
+          <Button
+            type="button"
+            variant={isPublished ? 'outline' : 'default'}
+            disabled={isPublishing}
+            onClick={handleTogglePublish}
+            className="gap-2 shadow-sm"
+          >
+            <Send className="h-4 w-4" />
+            <span>{isPublished ? 'Unpublish Form' : 'Publish Form'}</span>
+          </Button>
+
+          {/* Add Question Button */}
           {!isFrozen ? (
             <Button
               type="button"
@@ -802,7 +989,7 @@ export const FormBuilderPage: React.FC = () => {
               data-testid="btn-add-question"
             >
               <Plus className="h-4 w-4" />
-              <span>Add Question</span>
+              <span>Add Field</span>
             </Button>
           ) : (
             <Button
@@ -812,7 +999,7 @@ export const FormBuilderPage: React.FC = () => {
               data-testid="btn-add-optional-question"
             >
               <Plus className="h-4 w-4" />
-              <span>Add Optional Question</span>
+              <span>Add Optional Field</span>
             </Button>
           )}
         </div>
@@ -830,7 +1017,7 @@ export const FormBuilderPage: React.FC = () => {
               Form frozen: {registeredCount} attendees registered
             </p>
             <p className="text-xs text-amber-800 dark:text-amber-300">
-              Modifications to question definitions (type, label, required status, options, and validation) are strictly locked to safeguard response schema integrity. Only new optional questions can be appended.
+              Editing locked questions is restricted to preserve historical submissions. Any new question appended will automatically be optional.
             </p>
           </div>
         </div>
@@ -852,16 +1039,29 @@ export const FormBuilderPage: React.FC = () => {
               <Card className="border-dashed p-12 text-center text-muted-foreground space-y-3">
                 <FileText className="h-10 w-10 mx-auto text-muted-foreground/50" />
                 <p className="text-sm font-medium">No questions defined yet.</p>
-                <p className="text-xs">Add your first registration question to start collecting responses.</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleAddQuestion(false)}
-                  className="gap-1.5"
-                >
-                  <Plus className="h-4 w-4" />
-                  Add First Question
-                </Button>
+                <p className="text-xs">
+                  Apply a standard template or add custom questions to build your registration form.
+                </p>
+                <div className="flex justify-center gap-3 pt-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsTemplateModalOpen(true)}
+                    className="gap-1.5"
+                  >
+                    <Sparkles className="h-4 w-4 text-purple-600" />
+                    Load Template
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => handleAddQuestion(false)}
+                    className="gap-1.5"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add Custom Field
+                  </Button>
+                </div>
               </Card>
             ) : (
               questions.map((q, idx) => (
@@ -869,9 +1069,12 @@ export const FormBuilderPage: React.FC = () => {
                   key={q.id}
                   question={q}
                   index={idx}
+                  totalCount={questions.length}
                   isFrozen={isFrozen}
                   onUpdate={handleUpdateQuestion}
                   onDelete={handleDeleteQuestion}
+                  onDuplicate={handleDuplicateQuestion}
+                  onMove={handleMoveQuestion}
                 />
               ))
             )}
@@ -895,6 +1098,91 @@ export const FormBuilderPage: React.FC = () => {
         </div>
       )}
 
+      {/* Template Selection Modal */}
+      <Dialog open={isTemplateModalOpen} onOpenChange={setIsTemplateModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-purple-600" />
+              Apply Event Form Template
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Select an editable industry-standard template curated for university campus events.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {(templatesData?.templates ?? []).map((t: any) => {
+                const isSelected = selectedTemplateKey === t.key;
+                return (
+                  <div
+                    key={t.key}
+                    onClick={() => setSelectedTemplateKey(t.key)}
+                    className={`cursor-pointer p-3.5 rounded-xl border text-left transition-all ${
+                      isSelected
+                        ? 'border-primary ring-2 ring-primary/20 bg-primary/5'
+                        : 'border-border hover:border-border/80 bg-card'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <h4 className="font-bold text-sm text-foreground">{t.name}</h4>
+                      <Badge variant="outline" className="text-[10px]">
+                        {t.category}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground line-clamp-2">{t.description}</p>
+                    <span className="text-[11px] font-semibold text-primary mt-2 block">
+                      {t.questionCount} preconfigured questions
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {selectedTemplate && (
+              <div className="p-3.5 rounded-lg border border-border/70 bg-muted/20 space-y-2">
+                <h5 className="text-xs font-bold text-foreground">Preview of Template Fields:</h5>
+                <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
+                  {selectedTemplate.questions.map((q: any, i: number) => (
+                    <li key={i}>
+                      <span className="font-medium text-foreground">{q.label}</span>{' '}
+                      <span className="text-[11px] text-muted-foreground">({q.type})</span>
+                      {q.required && <span className="text-rose-500 font-bold ml-1">*</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {!isFrozen && (
+              <div className="flex items-center gap-2 pt-2 border-t border-border/60">
+                <input
+                  type="checkbox"
+                  id="replaceExisting"
+                  checked={replaceExisting}
+                  onChange={(e) => setReplaceExisting(e.target.checked)}
+                  className="rounded border-gray-300 text-primary focus:ring-primary"
+                />
+                <Label htmlFor="replaceExisting" className="text-xs cursor-pointer font-medium">
+                  Replace all existing questions with this template
+                </Label>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setIsTemplateModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" onClick={handleApplyTemplate} className="gap-2">
+              <Check className="h-4 w-4" />
+              Apply Template
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Real Form Preview Modal with Live Server Validation */}
       <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
@@ -903,14 +1191,24 @@ export const FormBuilderPage: React.FC = () => {
               <Eye className="h-5 w-5 text-indigo-600" />
               Live Registration Form Preview
             </DialogTitle>
-            <p className="text-xs text-muted-foreground">
-              Experience the form exactly as attendees see it. Fill in test answers and run validation against the server schema validator.
-            </p>
+            <DialogDescription className="text-xs">
+              Experience the form exactly as attendees see it. Fill in test answers and test schema validation.
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
             {questions.map((q) => {
               const fieldError = previewErrors[q.id];
+
+              if (q.type === QuestionType.INSTRUCTION) {
+                return (
+                  <div key={q.id} className="p-4 rounded-xl border border-indigo-200/60 dark:border-indigo-900/40 bg-indigo-50/30 dark:bg-indigo-950/20 space-y-1">
+                    <h4 className="text-sm font-bold text-foreground">{q.label}</h4>
+                    {q.helpText && <p className="text-xs text-muted-foreground">{q.helpText}</p>}
+                  </div>
+                );
+              }
+
               return (
                 <div key={q.id} className="space-y-1.5 p-3 rounded-lg border border-border/60 bg-card">
                   <div className="flex items-center justify-between">
@@ -919,7 +1217,7 @@ export const FormBuilderPage: React.FC = () => {
                       {q.required && <span className="text-rose-500 ml-1">*</span>}
                     </Label>
                     <Badge variant="secondary" className="text-[10px]">
-                      {QUESTION_TYPE_LABELS[q.type]}
+                      {QUESTION_TYPE_LABELS[q.type] || q.type}
                     </Badge>
                   </div>
 
@@ -936,9 +1234,22 @@ export const FormBuilderPage: React.FC = () => {
                       onChange={(e) =>
                         setPreviewAnswers({ ...previewAnswers, [q.id]: e.target.value })
                       }
-                      placeholder={q.label}
+                      placeholder={q.placeholder || q.label}
                       className={fieldError ? 'border-rose-500' : ''}
                     />
+                  ) : q.type === QuestionType.URL ? (
+                    <div className="relative">
+                      <Globe className="h-4 w-4 absolute left-3 top-3 text-muted-foreground" />
+                      <Input
+                        type="url"
+                        value={previewAnswers[q.id] ?? ''}
+                        onChange={(e) =>
+                          setPreviewAnswers({ ...previewAnswers, [q.id]: e.target.value })
+                        }
+                        placeholder={q.placeholder || 'https://...'}
+                        className={`pl-9 ${fieldError ? 'border-rose-500' : ''}`}
+                      />
+                    </div>
                   ) : q.type === QuestionType.LONG_TEXT ? (
                     <textarea
                       value={previewAnswers[q.id] ?? ''}
@@ -946,7 +1257,7 @@ export const FormBuilderPage: React.FC = () => {
                         setPreviewAnswers({ ...previewAnswers, [q.id]: e.target.value })
                       }
                       rows={3}
-                      placeholder={q.label}
+                      placeholder={q.placeholder || q.label}
                       className={`w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
                         fieldError ? 'border-rose-500' : ''
                       }`}
@@ -961,7 +1272,7 @@ export const FormBuilderPage: React.FC = () => {
                           [q.id]: e.target.value ? Number(e.target.value) : undefined,
                         })
                       }
-                      placeholder="0"
+                      placeholder={q.placeholder || '0'}
                       className={fieldError ? 'border-rose-500' : ''}
                     />
                   ) : q.type === QuestionType.CHECKBOX ? (
@@ -976,10 +1287,39 @@ export const FormBuilderPage: React.FC = () => {
                         className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                       />
                       <Label htmlFor={`prev-chk-${q.id}`} className="text-xs cursor-pointer">
-                        I confirm and agree
+                        {q.placeholder || 'I confirm and agree'}
                       </Label>
                     </div>
-                  ) : q.type === QuestionType.SINGLE_SELECT ? (
+                  ) : q.type === QuestionType.YES_NO ? (
+                    <div className="flex items-center gap-4 pt-1">
+                      <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                        <input
+                          type="radio"
+                          name={`yesno-${q.id}`}
+                          value="true"
+                          checked={previewAnswers[q.id] === true}
+                          onChange={() =>
+                            setPreviewAnswers({ ...previewAnswers, [q.id]: true })
+                          }
+                          className="text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <span>Yes</span>
+                      </label>
+                      <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                        <input
+                          type="radio"
+                          name={`yesno-${q.id}`}
+                          value="false"
+                          checked={previewAnswers[q.id] === false}
+                          onChange={() =>
+                            setPreviewAnswers({ ...previewAnswers, [q.id]: false })
+                          }
+                          className="text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <span>No</span>
+                      </label>
+                    </div>
+                  ) : q.type === QuestionType.SINGLE_SELECT || q.type === QuestionType.RADIO ? (
                     <div className="space-y-1.5 pt-1">
                       {(q.options ?? []).map((opt) => (
                         <label key={opt} className="flex items-center gap-2 text-xs cursor-pointer">
@@ -997,6 +1337,24 @@ export const FormBuilderPage: React.FC = () => {
                         </label>
                       ))}
                     </div>
+                  ) : q.type === QuestionType.DROPDOWN ? (
+                    <Select
+                      value={previewAnswers[q.id] ?? ''}
+                      onValueChange={(val) =>
+                        setPreviewAnswers({ ...previewAnswers, [q.id]: val })
+                      }
+                    >
+                      <SelectTrigger className={fieldError ? 'border-rose-500' : ''}>
+                        <SelectValue placeholder={q.placeholder || 'Select an option'} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(q.options ?? []).map((opt) => (
+                          <SelectItem key={opt} value={opt}>
+                            {opt}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   ) : q.type === QuestionType.MULTI_SELECT ? (
                     <div className="space-y-1.5 pt-1">
                       {(q.options ?? []).map((opt) => {

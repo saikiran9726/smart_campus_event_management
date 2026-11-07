@@ -16,13 +16,19 @@ import {
   Registration,
   registrations,
   Ticket,
+  tickets,
   User,
 } from '../../db/schema';
 import { env } from '../../env';
 import { AppError } from '../../lib/app-error';
 import { issueTicket } from '../registrations/ticket-service';
 import { releaseSeat } from '../waitlist/service';
-import { notifyBookingConfirmed } from '../comms/queue';
+import {
+  notifyBookingConfirmed,
+  notifyInApp,
+  notifyPaymentFailed,
+  notifyPaymentSuccess,
+} from '../comms/queue';
 
 /**
  * Strict schema for sandbox checkout simulation:
@@ -106,6 +112,28 @@ export async function handleSandboxWebhook(params: {
       );
     }
 
+    // Idempotency: if payment already completed, return existing result without duplicate ledger entries or tickets
+    if (payment.status === PaymentStatus.SUCCEEDED) {
+      const [existingTicket] = await tx
+        .select()
+        .from(tickets)
+        .where(eq(tickets.registrationId, registration.id))
+        .limit(1);
+
+      return {
+        outcome: 'SUCCEEDED',
+        payment,
+        ticket: existingTicket,
+      };
+    }
+
+    if (payment.status === PaymentStatus.FAILED) {
+      return {
+        outcome: 'FAILED',
+        payment,
+      };
+    }
+
     if (simulate === 'SUCCESS') {
       // 1. Update payment to SUCCEEDED
       const [updatedPayment] = await tx
@@ -145,9 +173,20 @@ export async function handleSandboxWebhook(params: {
         balanceAfterPaise: newBalance,
       });
 
-      // 4. Issue ticket and notify participant (EMAIL and WHATSAPP)
-      const ticket = await issueTicket(tx, confirmedReg!);
-      await notifyBookingConfirmed(tx, registration.id);
+      // 4. Issue ticket and notify participant if already approved
+      let ticket: Ticket | undefined;
+      if (confirmedReg?.approvalStatus === 'APPROVED') {
+        ticket = await issueTicket(tx, confirmedReg!);
+        await notifyBookingConfirmed(tx, registration.id);
+      }
+
+      await notifyPaymentSuccess(tx, {
+        userId: registration.userId,
+        eventId: registration.eventId,
+        registrationId: registration.id,
+        amount: payment.amountPaise / 100,
+        transactionId: paymentId,
+      });
 
       return {
         outcome: 'SUCCEEDED',
@@ -170,10 +209,18 @@ export async function handleSandboxWebhook(params: {
           status: RegistrationStatus.CANCELLED,
           paymentStatus: PaymentStatus.FAILED,
           cancelledAt: new Date(),
+          cancellationReason: 'Payment simulation failure',
         })
         .where(eq(registrations.id, registration.id));
 
       await releaseSeat(tx, registration.eventId);
+
+      await notifyPaymentFailed(tx, {
+        userId: registration.userId,
+        eventId: registration.eventId,
+        registrationId: registration.id,
+        errorReason: 'Payment simulation declined in test sandbox mode',
+      });
 
       return {
         outcome: 'FAILED',
@@ -218,6 +265,29 @@ export async function createSandboxCheckout(
       throw new AppError('FORBIDDEN', 'Unauthorized to checkout this registration.', 403);
     }
 
+    // Idempotent: if payment already succeeded, return existing payment record and ticket
+    if (reg.paymentStatus === PaymentStatus.SUCCEEDED) {
+      const [existingPayment] = await tx
+        .select()
+        .from(payments)
+        .where(eq(payments.registrationId, reg.id))
+        .orderBy(desc(payments.createdAt))
+        .limit(1);
+
+      const [existingTicket] = await tx
+        .select()
+        .from(tickets)
+        .where(eq(tickets.registrationId, reg.id))
+        .limit(1);
+
+      return {
+        alreadyCompleted: true as const,
+        outcome: 'SUCCEEDED' as const,
+        payment: existingPayment!,
+        ticket: existingTicket,
+      };
+    }
+
     if (
       reg.paymentStatus !== PaymentStatus.PENDING ||
       (reg.status !== RegistrationStatus.OFFERED &&
@@ -244,6 +314,14 @@ export async function createSandboxCheckout(
 
     return createdPayment!;
   });
+
+  if ('alreadyCompleted' in payment) {
+    return {
+      outcome: 'SUCCEEDED',
+      payment: payment.payment,
+      ticket: payment.ticket,
+    };
+  }
 
   // Call internal webhook handler
   return handleSandboxWebhook({

@@ -82,15 +82,18 @@ export const ScannerUnlockPage: React.FC = () => {
         }
       );
 
+      const sessionData = JSON.stringify({
+        eventId: res.eventId,
+        eventTitle: res.eventTitle,
+        volunteerName: res.volunteerName,
+      });
+
       sessionStorage.setItem('eventora_scanner_token', res.token);
-      sessionStorage.setItem(
-        'eventora_scanner_event',
-        JSON.stringify({
-          eventId: res.eventId,
-          eventTitle: res.eventTitle,
-          volunteerName: res.volunteerName,
-        })
-      );
+      sessionStorage.setItem('eventora_scanner_event', sessionData);
+      localStorage.setItem('eventora_scanner_token', res.token);
+      localStorage.setItem('eventora_scanner_event', sessionData);
+      localStorage.setItem('scanner_token', res.token);
+      localStorage.setItem('scanner_session', sessionData);
 
       toast({
         title: 'Scanner Session Activated',

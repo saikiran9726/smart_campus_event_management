@@ -13,6 +13,7 @@ import {
   WaitlistEntry,
   waitlistEntries,
 } from '../../db/schema';
+import { notifyWaitlistOffer } from '../comms/queue';
 
 export interface ReleaseSeatResult {
   promoted: boolean;
@@ -104,17 +105,12 @@ export async function releaseSeat(
       })
       .where(eq(registrations.id, queued.registrationId));
 
-    // Enqueue WAITLIST_OFFER notification
-    await tx.insert(notifications).values({
+    // Enqueue WAITLIST_OFFER notification (IN_APP and EMAIL)
+    await notifyWaitlistOffer(tx, {
       userId: queued.userId,
-      kind: NotificationKind.WAITLIST_OFFER,
-      channel: NotificationChannel.EMAIL,
-      payload: {
-        eventId,
-        registrationId: queued.registrationId,
-        offerExpiresAt: offerExpiresAt.toISOString(),
-      },
-      status: 'QUEUED',
+      eventId,
+      registrationId: queued.registrationId,
+      offerExpiresAt,
     });
 
     return {

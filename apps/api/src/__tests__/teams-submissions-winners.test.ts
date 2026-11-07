@@ -178,8 +178,8 @@ describe('Hackathon Teams, Roster Snapshots, Submissions, Teammate Pool & Winner
       expect(json.team.name).toBe('Binary Beasts');
       expect(json.team.leaderId).toBe(leaderUser1.id);
       expect(json.team.status).toBe(TeamStatus.FORMING);
-      expect(json.inviteCode).toHaveLength(6);
-      expect(json.display).toBe(`TEAM-${json.inviteCode}`);
+      expect(json.inviteCode).toHaveLength(8);
+      expect(json.display).toMatch(/^[A-Z0-9]{4}-[A-Z0-9]{4}$/);
 
       createdTeam = json.team;
 

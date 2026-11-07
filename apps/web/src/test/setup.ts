@@ -140,3 +140,12 @@ global.IntersectionObserver = class IntersectionObserver {
     return [];
   }
 } as unknown as typeof IntersectionObserver;
+
+// Polyfill Cloudflare Turnstile for jsdom
+if (typeof window !== 'undefined') {
+  (window as any).turnstile = {
+    render: () => 'mock-turnstile-widget-id',
+    remove: () => {},
+    reset: () => {},
+  };
+}

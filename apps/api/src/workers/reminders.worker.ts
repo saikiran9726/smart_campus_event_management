@@ -1,8 +1,9 @@
-import { and, eq, gte, inArray, lte } from 'drizzle-orm';
+import { and, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import {
   EventStatus,
   NotificationChannel,
   NotificationKind,
+  PaymentStatus,
   RegistrationStatus,
 } from '@eventora/shared';
 import { db } from '../db/client';
@@ -13,7 +14,7 @@ import {
   venues,
 } from '../db/schema';
 import { env } from '../env';
-import { enqueue } from '../modules/comms/queue';
+import { enqueue, notifyInApp } from '../modules/comms/queue';
 
 /**
  * Sweeps for upcoming events within the 24h and 2h reminder windows
@@ -106,6 +107,15 @@ export async function runRemindersSweepOnce(): Promise<{
         payload,
       });
 
+      await notifyInApp(db, {
+        userId: user.id,
+        eventId: event.id,
+        kind: NotificationKind.REMINDER_24H,
+        title: `Reminder: ${event.title} starts tomorrow!`,
+        message: `Your event starts tomorrow. Venue: ${payload.venueName}. Gate: ${gateNumbers}.`,
+        metadata: { eventId: event.id, registrationId: registration.id },
+      });
+
       if (emailResult) enqueued24h++;
       if (waResult) enqueued24h++;
     }
@@ -183,12 +193,58 @@ export async function runRemindersSweepOnce(): Promise<{
         payload,
       });
 
+      await notifyInApp(db, {
+        userId: user.id,
+        eventId: event.id,
+        kind: NotificationKind.REMINDER_2H,
+        title: `Starting in 2 hours: ${event.title}`,
+        message: `Your event starts in 2 hours at ${payload.venueName}. Gate: ${gateNumbers}. Have your QR ready!`,
+        metadata: { eventId: event.id, registrationId: registration.id },
+      });
+
       if (emailResult) enqueued2h++;
       if (waResult) enqueued2h++;
     }
   }
 
   return { reminders24h: enqueued24h, reminders2h: enqueued2h };
+}
+
+/**
+ * Sweeps for registrations with pending payment that need attention.
+ */
+export async function runPendingPaymentRemindersSweepOnce(): Promise<number> {
+  const pendingRows = await db
+    .select({
+      registration: registrations,
+      user: users,
+      event: events,
+    })
+    .from(registrations)
+    .innerJoin(users, eq(registrations.userId, users.id))
+    .innerJoin(events, eq(registrations.eventId, events.id))
+    .where(
+      and(
+        eq(registrations.paymentStatus, PaymentStatus.PENDING),
+        sql`${registrations.status} != ${RegistrationStatus.CANCELLED}`,
+        sql`${registrations.createdAt} <= (now() - interval '30 minutes')`,
+        gte(events.startAt, new Date())
+      )
+    );
+
+  let notified = 0;
+  for (const { registration, user, event } of pendingRows) {
+    await notifyInApp(db, {
+      userId: user.id,
+      eventId: event.id,
+      kind: NotificationKind.ORGANIZER_ALERT,
+      title: 'Action Required: Pending Registration Payment',
+      message: `You have an unconfirmed reservation for "${event.title}". Please complete test payment to secure your seat.`,
+      metadata: { registrationId: registration.id, eventId: event.id },
+    });
+    notified++;
+  }
+  return notified;
 }
 
 /**
@@ -201,10 +257,14 @@ export function startRemindersWorker(
   runRemindersSweepOnce().catch((err) =>
     console.error('[Reminders Worker] Error during startup reminder sweep:', err)
   );
+  runPendingPaymentRemindersSweepOnce().catch((err) =>
+    console.error('[Reminders Worker] Error during startup pending payment sweep:', err)
+  );
 
   return setInterval(async () => {
     try {
       await runRemindersSweepOnce();
+      await runPendingPaymentRemindersSweepOnce();
     } catch (err) {
       console.error('[Reminders Worker] Error during scheduled reminder sweep:', err);
     }

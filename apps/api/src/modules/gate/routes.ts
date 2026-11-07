@@ -1,5 +1,8 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { eq } from 'drizzle-orm';
 import { z } from 'zod';
+import { db } from '../../db/client';
+import { events } from '../../db/schema';
 import { AppError } from '../../lib/app-error';
 import { requireScanner } from '../passkeys/auth';
 import {
@@ -150,6 +153,45 @@ export async function gateRoutes(server: FastifyInstance): Promise<void> {
 
       const result = await getGateStats(parsed.data.eventId);
       return reply.status(200).send(result);
+    }
+  );
+
+  // 6. GET /gate/context (Scanner session or Organizer) - Authoritative session event context resolution
+  server.get(
+    '/gate/context',
+    { preHandler: [requireScanner] },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const scanner = request.scanner!;
+      const [event] = await db
+        .select({
+          id: events.id,
+          title: events.title,
+          slug: events.slug,
+          status: events.status,
+          startAt: events.startAt,
+          endAt: events.endAt,
+        })
+        .from(events)
+        .where(eq(events.id, scanner.eventId))
+        .limit(1);
+
+      if (!event) {
+        throw new AppError(
+          'NOT_FOUND',
+          'Event associated with this scanner session was not found.',
+          404
+        );
+      }
+
+      return reply.status(200).send({
+        eventId: event.id,
+        eventTitle: event.title,
+        eventSlug: event.slug,
+        eventStatus: event.status,
+        volunteerName: scanner.volunteerName || 'Volunteer',
+        label: scanner.label || null,
+        type: scanner.type,
+      });
     }
   );
 }

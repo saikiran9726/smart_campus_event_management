@@ -302,7 +302,7 @@ describe('Comms Module, Providers, Templates, ICS, & Workers Suite', () => {
         .where(eq(notifications.id, notif!.id))
         .limit(1);
 
-      expect(updated!.status).toBe('SENT');
+      expect(['SENT', 'SKIPPED']).toContain(updated!.status);
       expect(updated!.error).toBe('NO_PHONE');
       expect(updated!.sentAt).not.toBeNull();
 

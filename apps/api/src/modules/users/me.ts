@@ -1,20 +1,51 @@
 import { and, eq, ne } from 'drizzle-orm';
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import { PHONE_REGEX } from '@eventora/shared';
 import { db } from '../../db/client';
 import { clubMembers, clubs, users } from '../../db/schema';
 import { AppError } from '../../lib/app-error';
 import { requireAuth } from '../../plugins/auth';
+
+export function computeProfileCompleteness(user: {
+  fullName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  rollNumber?: string | null;
+  collegeName?: string | null;
+  department?: string | null;
+  year?: number | null;
+  program?: string | null;
+}) {
+  const missingFields: string[] = [];
+  if (!user.fullName?.trim()) missingFields.push('fullName');
+  if (!user.email?.trim()) missingFields.push('email');
+  if (!user.phone?.trim()) missingFields.push('phone');
+  if (!user.rollNumber?.trim()) missingFields.push('rollNumber');
+  if (!user.collegeName?.trim()) missingFields.push('collegeName');
+  if (!user.department?.trim()) missingFields.push('department');
+  if (!user.year) missingFields.push('year');
+  if (!user.program?.trim()) missingFields.push('program');
+
+  return {
+    profileComplete: missingFields.length === 0,
+    missingFields,
+  };
+}
 
 const updateMeSchema = z.object({
   fullName: z.string().min(1).max(100).optional(),
   name: z.string().min(1).max(100).optional(),
   rollNumber: z.string().min(1).max(50).nullable().optional(),
   roll_number: z.string().min(1).max(50).nullable().optional(),
+  collegeName: z.string().max(150).nullable().optional(),
+  college_name: z.string().max(150).nullable().optional(),
   department: z.string().max(100).nullable().optional(),
   year: z.number().int().min(1).max(6).nullable().optional(),
   yearOfStudy: z.number().int().min(1).max(6).nullable().optional(),
-  phone: z.string().min(7).max(20).nullable().optional(),
+  program: z.string().max(100).nullable().optional(),
+  course: z.string().max(100).nullable().optional(),
+  phone: z.string().max(25).nullable().optional(),
   avatarUrl: z.string().url().nullable().optional(),
 });
 
@@ -35,6 +66,8 @@ export async function meRoutes(server: FastifyInstance): Promise<void> {
         .innerJoin(clubs, eq(clubMembers.clubId, clubs.id))
         .where(eq(clubMembers.userId, currentUser.id));
 
+      const completeness = computeProfileCompleteness(currentUser);
+
       return reply.status(200).send({
         user: {
           id: currentUser.id,
@@ -45,14 +78,19 @@ export async function meRoutes(server: FastifyInstance): Promise<void> {
           avatarUrl: currentUser.avatarUrl,
           phone: currentUser.phone,
           rollNumber: currentUser.rollNumber,
+          collegeName: currentUser.collegeName,
           department: currentUser.department,
           year: currentUser.year,
           yearOfStudy: currentUser.year,
+          program: currentUser.program,
+          course: currentUser.program,
           role: currentUser.role,
           strikesCount: currentUser.strikeCount,
           strikeCount: currentUser.strikeCount,
           consecutiveNoShows: currentUser.consecutiveNoShows,
           cooldownUntil: currentUser.cooldownUntil?.toISOString() ?? null,
+          profileComplete: completeness.profileComplete,
+          missingFields: completeness.missingFields,
           clubs: memberships,
           createdAt: currentUser.createdAt.toISOString(),
           updatedAt: currentUser.updatedAt.toISOString(),
@@ -78,17 +116,22 @@ export async function meRoutes(server: FastifyInstance): Promise<void> {
       }
 
       const body = parseResult.data;
-      const effectiveRollNumber = body.rollNumber !== undefined ? body.rollNumber : body.roll_number;
+      const effectiveRollNumber =
+        body.rollNumber !== undefined ? body.rollNumber : body.roll_number;
       const effectiveFullName = body.fullName || body.name;
       const effectiveYear = body.year !== undefined ? body.year : body.yearOfStudy;
+      const effectiveCollege =
+        body.collegeName !== undefined ? body.collegeName : body.college_name;
+      const effectiveProgram =
+        body.program !== undefined ? body.program : body.course;
 
-      if (effectiveRollNumber) {
+      if (effectiveRollNumber && effectiveRollNumber.trim()) {
         const [conflict] = await db
           .select({ id: users.id })
           .from(users)
           .where(
             and(
-              eq(users.rollNumber, effectiveRollNumber),
+              eq(users.rollNumber, effectiveRollNumber.trim()),
               ne(users.id, currentUser.id)
             )
           )
@@ -97,9 +140,20 @@ export async function meRoutes(server: FastifyInstance): Promise<void> {
         if (conflict) {
           throw new AppError(
             'CONFLICT',
-            `Roll number '${effectiveRollNumber}' is already registered to another user.`,
+            `Roll number '${effectiveRollNumber.trim()}' is already registered to another user.`,
             409,
-            { rollNumber: effectiveRollNumber }
+            { rollNumber: effectiveRollNumber.trim() }
+          );
+        }
+      }
+
+      if (body.phone && body.phone.trim()) {
+        if (!PHONE_REGEX.test(body.phone.trim())) {
+          throw new AppError(
+            'VALIDATION_FAILED',
+            'Invalid phone number format. Must contain 7 to 25 valid phone characters.',
+            400,
+            { phone: body.phone }
           );
         }
       }
@@ -108,12 +162,31 @@ export async function meRoutes(server: FastifyInstance): Promise<void> {
         updatedAt: new Date(),
       };
 
-      if (effectiveFullName !== undefined) updatePayload.fullName = effectiveFullName;
-      if (effectiveRollNumber !== undefined) updatePayload.rollNumber = effectiveRollNumber;
-      if (body.department !== undefined) updatePayload.department = body.department;
-      if (effectiveYear !== undefined) updatePayload.year = effectiveYear;
-      if (body.phone !== undefined) updatePayload.phone = body.phone;
-      if (body.avatarUrl !== undefined) updatePayload.avatarUrl = body.avatarUrl;
+      // Safeguard: do not overwrite valid existing data with empty strings
+      if (effectiveFullName !== undefined && effectiveFullName.trim()) {
+        updatePayload.fullName = effectiveFullName.trim();
+      }
+      if (effectiveRollNumber !== undefined && effectiveRollNumber !== null && effectiveRollNumber.trim()) {
+        updatePayload.rollNumber = effectiveRollNumber.trim();
+      }
+      if (effectiveCollege !== undefined && effectiveCollege !== null && effectiveCollege.trim()) {
+        updatePayload.collegeName = effectiveCollege.trim();
+      }
+      if (body.department !== undefined && body.department !== null && body.department.trim()) {
+        updatePayload.department = body.department.trim();
+      }
+      if (effectiveProgram !== undefined && effectiveProgram !== null && effectiveProgram.trim()) {
+        updatePayload.program = effectiveProgram.trim();
+      }
+      if (effectiveYear !== undefined && effectiveYear !== null) {
+        updatePayload.year = effectiveYear;
+      }
+      if (body.phone !== undefined && body.phone !== null && body.phone.trim()) {
+        updatePayload.phone = body.phone.trim();
+      }
+      if (body.avatarUrl !== undefined) {
+        updatePayload.avatarUrl = body.avatarUrl;
+      }
 
       const [updatedUser] = await db
         .update(users)
@@ -126,6 +199,7 @@ export async function meRoutes(server: FastifyInstance): Promise<void> {
       }
 
       request.user = updatedUser;
+      const completeness = computeProfileCompleteness(updatedUser);
 
       return reply.status(200).send({
         user: {
@@ -137,14 +211,19 @@ export async function meRoutes(server: FastifyInstance): Promise<void> {
           avatarUrl: updatedUser.avatarUrl,
           phone: updatedUser.phone,
           rollNumber: updatedUser.rollNumber,
+          collegeName: updatedUser.collegeName,
           department: updatedUser.department,
           year: updatedUser.year,
           yearOfStudy: updatedUser.year,
+          program: updatedUser.program,
+          course: updatedUser.program,
           role: updatedUser.role,
           strikesCount: updatedUser.strikeCount,
           strikeCount: updatedUser.strikeCount,
           consecutiveNoShows: updatedUser.consecutiveNoShows,
           cooldownUntil: updatedUser.cooldownUntil?.toISOString() ?? null,
+          profileComplete: completeness.profileComplete,
+          missingFields: completeness.missingFields,
           createdAt: updatedUser.createdAt.toISOString(),
           updatedAt: updatedUser.updatedAt.toISOString(),
         },

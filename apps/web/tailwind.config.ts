@@ -10,32 +10,83 @@ const config: Config = {
   theme: {
     container: {
       center: true,
-      padding: '2rem',
+      padding: '1.5rem',
       screens: {
-        '2xl': '1400px',
+        '2xl': '1200px',
       },
     },
     extend: {
       fontFamily: {
-        sans: ['Inter Variable', 'sans-serif'],
+        sans: ['Inter Variable', 'Inter', 'sans-serif'],
+        heading: ['Manrope Variable', 'Manrope', 'Inter Variable', 'sans-serif'],
+        mono: ['JetBrains Mono Variable', 'JetBrains Mono', 'monospace'],
+      },
+      fontSize: {
+        xs: ['12px', { lineHeight: '16px' }],
+        sm: ['14px', { lineHeight: '20px' }],
+        base: ['16px', { lineHeight: '24px' }],
+        lg: ['18px', { lineHeight: '28px' }],
+        xl: ['20px', { lineHeight: '28px' }],
+        '2xl': ['24px', { lineHeight: '32px' }],
+        '3xl': ['30px', { lineHeight: '36px' }],
+        '4xl': ['36px', { lineHeight: '40px' }],
+      },
+      maxWidth: {
+        compact: '640px',
+        prose: '720px',
+        content: '1200px',
       },
       colors: {
-        brand: {
-          indigo: '#4338CA',
-          violet: '#6366F1',
-          emerald: '#059669',
-          rose: '#E11D48',
-          amber: '#D97706',
-          slate: '#0F172A',
+        // Neutral stone
+        stone: {
+          50: '#FAFAF9',
+          100: '#F5F5F4',
+          200: '#E7E5E4',
+          300: '#D6D3D1',
+          400: '#A8A29E',
+          500: '#78716C',
+          600: '#57534E',
+          700: '#44403C',
+          800: '#292524',
+          900: '#1C1917',
         },
-        canvas: {
-          light: '#f8fafc',
-          dark: '#0b0f19',
+        // Brand teal
+        teal: {
+          50: '#F0FDFA',
+          100: '#CCFBF1',
+          500: '#14B8A6',
+          600: '#0D9488',
+          700: '#0F766E',
+          800: '#115E59',
         },
-        surface: {
-          light: '#ffffff',
-          dark: '#131b2e',
+        // Accent amber
+        amber: {
+          100: '#FEF3C7',
+          400: '#FBBF24',
+          500: '#F59E0B',
         },
+        // Semantic
+        success: {
+          DEFAULT: '#15803D',
+          bg: '#F0FDF4',
+          border: '#BBF7D0',
+        },
+        warning: {
+          DEFAULT: '#B45309',
+          bg: '#FFFBEB',
+          border: '#FDE68A',
+        },
+        danger: {
+          DEFAULT: '#B91C1C',
+          bg: '#FEF2F2',
+          border: '#FECACA',
+        },
+        info: {
+          DEFAULT: '#1D4ED8',
+          bg: '#EFF6FF',
+          border: '#BFDBFE',
+        },
+        // HSL theme variables
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
         ring: 'hsl(var(--ring))',
@@ -71,23 +122,20 @@ const config: Config = {
         },
       },
       borderRadius: {
-        lg: 'var(--radius)',
-        md: 'calc(var(--radius) - 2px)',
-        sm: 'calc(var(--radius) - 4px)',
+        sm: '8px',
+        md: '12px',
+        lg: '16px',
+        full: '9999px',
       },
-      keyframes: {
-        'accordion-down': {
-          from: { height: '0' },
-          to: { height: 'var(--radix-accordion-content-height)' },
-        },
-        'accordion-up': {
-          from: { height: 'var(--radix-accordion-content-height)' },
-          to: { height: '0' },
-        },
+      boxShadow: {
+        sm: '0 1px 2px 0 rgb(0 0 0 / 0.05)',
+        md: '0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.07)',
+        lg: '0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.08)',
       },
-      animation: {
-        'accordion-down': 'accordion-down 0.2s ease-out',
-        'accordion-up': 'accordion-up 0.2s ease-out',
+      transitionDuration: {
+        DEFAULT: '150ms',
+        fast: '150ms',
+        normal: '200ms',
       },
     },
   },

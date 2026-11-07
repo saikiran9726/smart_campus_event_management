@@ -32,6 +32,12 @@ export const registrations = pgTable(
       .notNull()
       .default(PaymentStatus.NOT_REQUIRED),
     amountPaise: integer('amount_paise').notNull().default(0),
+    formVersion: integer('form_version').notNull().default(1),
+    approvalStatus: text('approval_status').notNull().default('APPROVED'),
+    reviewedBy: uuid('reviewed_by').references(() => users.id, { onDelete: 'set null' }),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+    rejectionReason: text('rejection_reason'),
+    cancellationReason: text('cancellation_reason'),
     waitlistPositionHint: integer('waitlist_position_hint'),
     offerExpiresAt: timestamp('offer_expires_at', { withTimezone: true }),
     offeredAt: timestamp('offered_at', { withTimezone: true }),
@@ -45,6 +51,7 @@ export const registrations = pgTable(
       table.status,
       table.createdAt
     ),
+    index('registrations_approval_status_idx').on(table.approvalStatus),
     uniqueIndex('registrations_event_user_active_idx')
       .on(table.eventId, table.userId)
       .where(sql`status NOT IN ('CANCELLED', 'EXPIRED')`),

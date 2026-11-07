@@ -35,7 +35,7 @@ export const ClubSwitcher: React.FC<{ className?: string }> = ({ className }) =>
           }}
           disabled={clubs.length === 0}
         >
-          <SelectTrigger data-testid="club-switcher" className={className}>
+          <SelectTrigger data-testid="club-switcher" aria-label="Select organization club" className={className}>
             <SelectValue placeholder={clubs.length === 0 ? 'No clubs joined' : 'Select Club'} />
           </SelectTrigger>
           <SelectContent>

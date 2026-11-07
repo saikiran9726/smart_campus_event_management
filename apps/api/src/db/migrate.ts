@@ -37,6 +37,9 @@ export async function runMigrations(): Promise<void> {
 
   const client = await pool.connect();
   try {
+    const dbRes = await client.query('SELECT current_database()');
+    console.log(`Verified connected database: ${dbRes.rows[0]?.current_database}`);
+
     // Acquire PostgreSQL session-level advisory lock to ensure single-flight execution
     console.log('Acquiring PostgreSQL migration advisory lock...');
     await client.query('SELECT pg_advisory_lock($1)', [MIGRATION_ADVISORY_LOCK_ID]);

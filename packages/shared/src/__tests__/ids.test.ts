@@ -45,13 +45,13 @@ describe('ids generation and cryptographic sampling', () => {
     expect(tokenSet.size).toBe(count);
   });
 
-  it('generates team code with length 6 and valid charset (excluding ambiguous chars 0, O, 1, I, L)', () => {
+  it('generates team code with valid length and valid charset (excluding ambiguous chars 0, O, 1, I, L)', () => {
     const forbiddenChars = new Set(['0', 'O', '1', 'I', 'L']);
     const codes = Array.from({ length: 500 }, () => generateTeamCode());
 
     for (const code of codes) {
       expect(code).toHaveLength(TEAM_CODE_LENGTH);
-      expect(code.length).toBe(6);
+      expect(code.length).toBe(TEAM_CODE_LENGTH);
 
       for (const char of code) {
         expect(TEAM_CODE_ALPHABET).toContain(char);

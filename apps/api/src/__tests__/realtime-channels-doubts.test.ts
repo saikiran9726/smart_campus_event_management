@@ -18,7 +18,7 @@ import {
   registrations,
   users,
 } from '../db/schema';
-import { initIO } from '../realtime/io';
+import { initIO, resetIO } from '../realtime/io';
 import { resetChatRateLimits } from '../modules/channels/rate-limiter';
 import { buildServer } from '../server';
 
@@ -201,6 +201,7 @@ describe('Realtime Chat, Club Channels, Doubt Rooms & Role Badges Suite', () => 
   });
 
   afterAll(async () => {
+    resetIO();
     await server.close();
   });
 

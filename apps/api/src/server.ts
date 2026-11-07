@@ -21,6 +21,7 @@ import { runOfferExpirySweepOnce } from './workers/offer-expiry.worker';
 import { AppError } from './lib/app-error';
 import { meRoutes } from './modules/users/me';
 import { clerkWebhookRoutes } from './modules/webhooks/clerk';
+import { whatsappWebhookRoutes } from './modules/webhooks/whatsapp';
 import { clubRoutes } from './modules/clubs/routes';
 import { uploadRoutes } from './modules/uploads/routes';
 import { proposalRoutes } from './modules/proposals/routes';
@@ -44,13 +45,16 @@ import { reviewRoutes } from './modules/reviews';
 import { verifyRoutes } from './modules/verify';
 import { budgetRoutes } from './modules/budget';
 import { analyticsRoutes } from './modules/analytics';
+import { adminRoutes } from './modules/admin/routes';
+import { volunteerRoutes } from './modules/volunteers/routes';
 
 const allowedDevOrigins = new Set([
   'http://localhost:3000',
+  'http://localhost:3001',
   'http://localhost:5173',
   'http://127.0.0.1:3000',
+  'http://127.0.0.1:3001',
 ]);
-
 const redactionPaths = [
   'req.headers.authorization',
   'req.headers.cookie',
@@ -146,13 +150,14 @@ export function buildServer(opts: FastifyServerOptions = {}): FastifyInstance {
       'Authorization',
       'Content-Type',
       'cf-turnstile-response',
-      ...(env.NODE_ENV === 'test' ? ['x-test-user-id'] : []),
+      'x-idempotency-key',
+      ...(env.NODE_ENV !== 'production' ? ['x-test-user-id', 'x-scanner-token'] : []),
     ],
     optionsSuccessStatus: 204,
   });
 
   server.register(rateLimit, {
-    max: env.NODE_ENV === 'test' ? 10000 : 300,
+    max: env.NODE_ENV !== 'production' ? 50000 : 300,
     timeWindow: '1 minute',
   });
 
@@ -297,7 +302,7 @@ export function buildServer(opts: FastifyServerOptions = {}): FastifyInstance {
   });
 
   // Test-only endpoint to force waitlist offer expiry sweep in E2E tests
-  if (env.NODE_ENV === 'test') {
+  if (env.NODE_ENV !== 'production') {
     server.post('/test/expire-offers', async (_request, reply) => {
       await db
         .update(registrations)
@@ -311,6 +316,7 @@ export function buildServer(opts: FastifyServerOptions = {}): FastifyInstance {
 
   // Register core routes
   server.register(clerkWebhookRoutes);
+  server.register(whatsappWebhookRoutes);
   server.register(meRoutes);
   server.register(clubRoutes);
   server.register(uploadRoutes);
@@ -335,6 +341,8 @@ export function buildServer(opts: FastifyServerOptions = {}): FastifyInstance {
   server.register(verifyRoutes);
   server.register(budgetRoutes);
   server.register(analyticsRoutes);
+  server.register(adminRoutes);
+  server.register(volunteerRoutes);
 
   return server;
 }

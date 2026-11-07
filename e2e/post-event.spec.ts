@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Post-Event Flow: OD Letters, Podium & LinkedIn Share', () => {
-  const API_URL = 'http://localhost:3001';
+  const API_URL = process.env.API_URL || 'http://localhost:4000';
 
   test('checked-in attendee downloads valid OD PDF (%PDF + serial), views podium, and triggers LinkedIn share', async ({
     page,

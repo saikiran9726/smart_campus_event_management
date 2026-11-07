@@ -4,10 +4,14 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useSocketEvent } from '@/lib/socket';
-import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/primitives/status-badge';
+import { Card } from '@/components/shared/Card';
+import { Badge } from '@/components/shared/Badge';
+import { PageHeader } from '@/components/shared/PageHeader';
+import { CopyButton } from '@/components/shared/CopyButton';
+import { EmptyState } from '@/components/shared/EmptyState';
 import {
   Dialog,
   DialogContent,
@@ -19,7 +23,9 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/use-toast';
 import { copyToClipboard } from '@/lib/clipboard';
+import { formatTeamCode } from '@eventora/shared';
 import { AuthenticatedQrImage } from './AuthenticatedQrImage';
+import { ProjectSubmissionDialog } from '../submissions/ProjectSubmissionDialog';
 import {
   Ticket,
   FileText,
@@ -32,6 +38,9 @@ import {
   MapPin,
   AlertTriangle,
   RefreshCw,
+  Users,
+  ExternalLink,
+  FileCode,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -43,7 +52,7 @@ export interface PassportTicket {
   eventDate: string;
   venue: string;
   token: string;
-  status: 'VALID' | 'CHECKED_IN' | 'REVOKED';
+  status: 'VALID' | 'CHECKED_IN' | 'REVOKED' | 'VOID';
   isAttended: boolean;
   hasOdLetter?: boolean;
   reviewed?: boolean;
@@ -63,6 +72,7 @@ interface RegistrationApiRow {
     userId: string;
     eventId: string;
     status: 'CONFIRMED' | 'WAITLISTED' | 'CANCELLED' | 'ATTENDED';
+    paymentStatus?: 'NOT_REQUIRED' | 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED';
     createdAt: string;
     updatedAt: string;
   };
@@ -125,8 +135,9 @@ interface PassportApiRow {
 
 export const PassportPage: React.FC = () => {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'upcoming' | 'attended' | 'certificates'>('upcoming');
+  const [activeTab, setActiveTab] = useState<'upcoming' | 'teams' | 'attended' | 'certificates'>('upcoming');
   const [ticketToCancel, setTicketToCancel] = useState<PassportTicket | null>(null);
+  const [submissionEvent, setSubmissionEvent] = useState<{ id: string; title: string } | null>(null);
   const [qrBlobUrls, setQrBlobUrls] = useState<Record<string, string | null>>({});
 
   const handleQrUrlChange = React.useCallback((tktId: string, url: string | null) => {
@@ -174,7 +185,22 @@ export const PassportPage: React.FC = () => {
     },
   });
 
+  const {
+    data: myTeamsData,
+    refetch: refetchTeams,
+  } = useQuery<{ teams: any[] } | any[]>({
+    queryKey: ['me', 'teams'],
+    queryFn: async () => {
+      const res = await api.get<{ teams: any[] }>('/me/teams', {
+        showToast: false,
+      });
+      return (res as any)?.teams || [];
+    },
+  });
+  const myTeams = (Array.isArray(myTeamsData) ? myTeamsData : myTeamsData?.teams) || [];
+
   const refetchAll = () => {
+    void refetchTeams();
     void refetchRegistrations();
     void refetchPassport();
   };
@@ -205,12 +231,21 @@ export const PassportPage: React.FC = () => {
     const seenEventIds = new Set<string>();
 
     for (const row of registrations) {
-      if (row.registration.status === 'CANCELLED' || row.registration.status === 'WAITLISTED') continue;
+      if (
+        row.registration.status === 'CANCELLED' ||
+        row.registration.status === 'WAITLISTED' ||
+        row.registration.paymentStatus === 'PENDING'
+      ) {
+        continue;
+      }
       const passportMeta = passportByEventId.get(row.event.id);
       const isAttended =
         !!row.ticket?.checkedInAt ||
         row.registration.status === 'ATTENDED' ||
         !!passportMeta;
+
+      const ticketStatus = row.ticket?.status;
+      const isRevoked = ticketStatus === 'REVOKED' || (ticketStatus as string) === 'VOID';
 
       seenEventIds.add(row.event.id);
       list.push({
@@ -220,8 +255,8 @@ export const PassportPage: React.FC = () => {
         eventTitle: row.event.title,
         eventDate: row.event.startAt,
         venue: 'Campus Main Venue',
-        token: row.ticket?.token || '',
-        status: (row.ticket?.status || (isAttended ? 'CHECKED_IN' : 'VALID')) as 'VALID' | 'CHECKED_IN' | 'REVOKED',
+        token: isRevoked ? '' : (row.ticket?.token || ''),
+        status: (isRevoked ? 'REVOKED' : (ticketStatus || (isAttended ? 'CHECKED_IN' : 'VALID'))) as 'VALID' | 'CHECKED_IN' | 'REVOKED',
         isAttended,
         hasOdLetter: !!passportMeta?.odLetter,
         reviewed: !!passportMeta?.review,
@@ -349,16 +384,18 @@ export const PassportPage: React.FC = () => {
 
   return (
     <div className="container max-w-5xl px-4 sm:px-8 py-8 mx-auto space-y-6" data-testid="passport-page">
-      <div className="space-y-1">
-        <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">Event Passport</h1>
-        <p className="text-muted-foreground text-sm">
-          Your active digital entry passes, OD attendance records, and verified achievements.
-        </p>
-      </div>
+      <PageHeader
+        title="Event Passport"
+        subtitle="Your active digital entry passes, campus teams, OD attendance records, and verified credentials."
+        breadcrumbs={[
+          { label: 'Discover', href: '/' },
+          { label: 'Passport' },
+        ]}
+      />
 
       {isError ? (
-        <Card className="border-border p-12 text-center space-y-4" data-testid="passport-error-state">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+        <Card className="p-12 text-center space-y-4" data-testid="passport-error-state">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100 text-red-600 dark:bg-red-950/40 dark:text-red-400">
             <AlertTriangle className="h-6 w-6" />
           </div>
           <div className="space-y-1">
@@ -379,22 +416,30 @@ export const PassportPage: React.FC = () => {
       ) : (
         <Tabs
           value={activeTab}
-          onValueChange={(val) => setActiveTab(val as 'upcoming' | 'attended' | 'certificates')}
+          onValueChange={(val) => setActiveTab(val as 'upcoming' | 'teams' | 'attended' | 'certificates')}
           className="space-y-6"
         >
-          <TabsList className="grid grid-cols-3 max-w-md h-12">
+          <TabsList className="grid grid-cols-2 sm:grid-cols-4 max-w-2xl h-auto sm:h-11 bg-stone-100 dark:bg-stone-800 p-1 rounded-xl gap-1">
             <TabsTrigger
               value="upcoming"
               onClick={() => setActiveTab('upcoming')}
-              className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold"
+              className="flex items-center justify-center gap-1.5 text-xs sm:text-sm font-semibold py-2 sm:py-0"
             >
               <Ticket className="h-4 w-4" />
               <span>Upcoming ({upcomingTickets.length})</span>
             </TabsTrigger>
             <TabsTrigger
+              value="teams"
+              onClick={() => setActiveTab('teams')}
+              className="flex items-center justify-center gap-1.5 text-xs sm:text-sm font-semibold py-2 sm:py-0"
+            >
+              <Users className="h-4 w-4" />
+              <span>My Teams ({myTeams.length})</span>
+            </TabsTrigger>
+            <TabsTrigger
               value="attended"
               onClick={() => setActiveTab('attended')}
-              className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold"
+              className="flex items-center justify-center gap-1.5 text-xs sm:text-sm font-semibold py-2 sm:py-0"
             >
               <FileText className="h-4 w-4" />
               <span>Attended ({attendedTickets.length})</span>
@@ -402,116 +447,242 @@ export const PassportPage: React.FC = () => {
             <TabsTrigger
               value="certificates"
               onClick={() => setActiveTab('certificates')}
-              className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold"
+              className="flex items-center justify-center gap-1.5 text-xs sm:text-sm font-semibold py-2 sm:py-0"
             >
               <Award className="h-4 w-4" />
               <span>Certificates ({certificates.length})</span>
             </TabsTrigger>
           </TabsList>
 
-          {/* Tab 1: Upcoming Event Passes */}
+          {/* Tab 1: Upcoming Event Passes with CSS perforation */}
           <TabsContent value="upcoming" className="space-y-6">
             {isLoading ? (
               <div className="space-y-4">
-                <div className="h-48 bg-muted/30 rounded-2xl animate-pulse" />
-                <div className="h-48 bg-muted/30 rounded-2xl animate-pulse" />
+                <div className="h-48 bg-stone-100 dark:bg-stone-800 rounded-2xl animate-pulse" />
+                <div className="h-48 bg-stone-100 dark:bg-stone-800 rounded-2xl animate-pulse" />
               </div>
             ) : upcomingTickets.length === 0 ? (
-              <Card className="border-border p-12 text-center space-y-2">
-                <p className="text-muted-foreground text-sm">You have no active upcoming event passes.</p>
-                <Button asChild variant="outline" size="sm">
-                  <Link to="/">Explore Campus Events</Link>
-                </Button>
-              </Card>
+              <EmptyState
+                title="No active entry passes"
+                description="You have no active upcoming event passes. Browse campus workshops and hackathons to get your pass."
+                actionLabel="Explore Campus Events"
+                onAction={() => { window.location.href = '/'; }}
+              />
             ) : (
               upcomingTickets.map((tkt) => (
-                <Card key={tkt.id} className="border-border shadow-md overflow-hidden" data-testid="upcoming-ticket-card">
-                  <div className="p-6 flex flex-col md:flex-row items-center justify-between gap-6">
-                    {/* Left Ticket Info */}
-                    <div className="space-y-3 flex-1 text-center md:text-left">
-                      <div className="flex flex-wrap items-center justify-center md:justify-start gap-2">
-                        <StatusBadge status={tkt.status} />
-                        <span className="text-xs text-muted-foreground tnum">
-                          {new Date(tkt.eventDate).toLocaleDateString()}
-                        </span>
-                      </div>
+                <div
+                  key={tkt.id}
+                  className="relative flex flex-col md:flex-row bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-2xl shadow-xs overflow-hidden hover:border-stone-300 dark:hover:border-stone-700 transition-all"
+                  data-testid="upcoming-ticket-card"
+                >
+                  {/* Left Ticket Main Body */}
+                  <div className="flex-1 p-6 space-y-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusBadge status={tkt.status} />
+                      <span className="text-xs text-stone-600 dark:text-stone-300 font-mono tnum">
+                        {new Date(tkt.eventDate).toLocaleDateString(undefined, {
+                          weekday: 'short',
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                        })}
+                      </span>
+                    </div>
 
-                      <h3 className="text-2xl font-extrabold text-foreground">{tkt.eventTitle}</h3>
-
-                      <div className="flex flex-col sm:flex-row items-center justify-center md:justify-start gap-4 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          <MapPin className="h-3.5 w-3.5 text-primary" />
-                          <span>{tkt.venue}</span>
-                        </span>
-                      </div>
-
-                      {tkt.token && (
-                        <div className="p-3 rounded-lg bg-muted/40 font-mono text-xs text-foreground tracking-wider font-semibold inline-block">
-                          {tkt.token}
-                        </div>
-                      )}
-
-                      <div className="pt-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setTicketToCancel(tkt)}
-                          className="text-destructive hover:text-destructive hover:bg-destructive/10 text-xs inline-flex items-center gap-1.5"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          <span>Cancel Pass</span>
-                        </Button>
+                    <div>
+                      <h3 className="text-xl sm:text-2xl font-bold tracking-tight text-stone-900 dark:text-stone-100">
+                        {tkt.eventTitle}
+                      </h3>
+                      <div className="flex items-center gap-1.5 text-xs text-stone-600 dark:text-stone-300 mt-1">
+                        <MapPin className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
+                        <span>{tkt.venue}</span>
                       </div>
                     </div>
 
-                    {/* Right High Contrast QR Code Block */}
-                    {tkt.token ? (
-                      <div className="flex flex-col items-center gap-2 shrink-0">
-                        <div className="p-4 bg-white rounded-2xl shadow-lg border border-slate-200 text-center">
-                          <AuthenticatedQrImage
-                            registrationId={tkt.registrationId}
-                            onObjectUrlChange={(url) => handleQrUrlChange(tkt.id, url)}
-                          />
-                          <div className="flex items-center justify-center gap-1 text-[11px] text-slate-700 font-semibold pt-2">
-                            <Sun className="h-3.5 w-3.5 text-amber-500" />
-                            <span>Brightness-boost for gate optical scanners</span>
-                          </div>
-                        </div>
-
-                        {qrBlobUrls[tkt.id] ? (
-                          <a
-                            href={qrBlobUrls[tkt.id]!}
-                            download={`ticket-${tkt.id}.png`}
-                            className="text-xs text-primary font-semibold hover:underline"
-                          >
-                            Save Ticket to Photos / Wallet
-                          </a>
-                        ) : (
-                          <span className="text-xs text-muted-foreground font-semibold">
-                            Save Ticket to Photos / Wallet
+                    {tkt.token && (
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-bold text-stone-600 dark:text-stone-300 uppercase tracking-wider">Pass Code</span>
+                        <div className="flex items-center gap-2">
+                          <span className="px-3 py-1.5 rounded-lg bg-stone-100 dark:bg-stone-800 font-mono text-sm sm:text-base font-bold tracking-widest text-stone-900 dark:text-stone-100 border border-stone-200 dark:border-stone-700">
+                            {tkt.token}
                           </span>
-                        )}
+                          <CopyButton textToCopy={tkt.token} label="Copy Pass Code" />
+                        </div>
                       </div>
-                    ) : null}
+                    )}
+
+                    <div className="pt-2 flex flex-wrap items-center gap-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSubmissionEvent({ id: tkt.eventId, title: tkt.eventTitle })}
+                        className="text-xs inline-flex items-center gap-1.5 h-8 px-2.5 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800 hover:bg-teal-50 dark:hover:bg-teal-950/30"
+                      >
+                        <FileCode className="h-3.5 w-3.5" />
+                        <span>Project Deliverables</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setTicketToCancel(tkt)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 text-xs inline-flex items-center gap-1.5 h-8 px-2.5"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        <span>Cancel Pass</span>
+                      </Button>
+                      <Link
+                        to={`/events/${tkt.eventId}`}
+                        className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline inline-flex items-center gap-1"
+                      >
+                        <span>Event details</span>
+                        <ExternalLink className="h-3 w-3" />
+                      </Link>
+                    </div>
+                  </div>
+
+                  {/* Perforation dashed line with circular notches */}
+                  <div className="relative flex md:flex-col items-center justify-between border-t md:border-t-0 md:border-l border-dashed border-stone-300 dark:border-stone-700 bg-stone-50/50 dark:bg-stone-950/30">
+                    {/* Desktop top/bottom notches */}
+                    <div className="hidden md:block absolute -top-3.5 left-1/2 -translate-x-1/2 w-6 h-6 rounded-full bg-stone-50 dark:bg-stone-950 border-b border-stone-300 dark:border-stone-700" />
+                    <div className="hidden md:block absolute -bottom-3.5 left-1/2 -translate-x-1/2 w-6 h-6 rounded-full bg-stone-50 dark:bg-stone-950 border-t border-stone-300 dark:border-stone-700" />
+                    {/* Mobile left/right notches */}
+                    <div className="md:hidden absolute -left-3.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-stone-50 dark:bg-stone-950 border-r border-stone-300 dark:border-stone-700" />
+                    <div className="md:hidden absolute -right-3.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-stone-50 dark:bg-stone-950 border-l border-stone-300 dark:border-stone-700" />
+                  </div>
+
+                  {/* Right High Contrast QR Code Block */}
+                  {tkt.token ? (
+                    <div className="p-6 md:w-64 flex flex-col items-center justify-center bg-stone-50/40 dark:bg-stone-900/20 text-center shrink-0 space-y-3">
+                      <div className="p-3 bg-white rounded-xl shadow-xs border border-stone-200">
+                        <AuthenticatedQrImage
+                          registrationId={tkt.registrationId}
+                          onObjectUrlChange={(url) => handleQrUrlChange(tkt.id, url)}
+                        />
+                      </div>
+                      <div className="flex items-center justify-center gap-1 text-[11px] text-stone-600 dark:text-stone-400 font-medium">
+                        <Sun className="h-3.5 w-3.5 text-amber-500" />
+                        <span>Brightness-boost for gate</span>
+                      </div>
+                      {qrBlobUrls[tkt.id] ? (
+                        <a
+                          href={qrBlobUrls[tkt.id]!}
+                          download={`ticket-${tkt.id}.png`}
+                          className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline"
+                        >
+                          Save Ticket to Photos
+                        </a>
+                      ) : (
+                        <span className="text-xs text-stone-600 dark:text-stone-300 font-medium">
+                          Save Ticket to Photos
+                        </span>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              ))
+            )}
+          </TabsContent>
+
+          {/* Tab 2: My Teams */}
+          <TabsContent value="teams" className="space-y-4">
+            {myTeams.length === 0 ? (
+              <EmptyState
+                title="No campus teams yet"
+                description="Join an existing team with an invite code or register a team for a hackathon or tournament."
+                actionLabel="Join with Team Code"
+                onAction={() => { window.location.href = '/teams/join'; }}
+              />
+            ) : (
+              myTeams.map((team: any) => (
+                <Card key={team.id} className="p-6 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-xl font-bold text-stone-900 dark:text-stone-100">{team.name}</h3>
+                        <Badge variant={team.leaderId === user?.id ? 'primary' : 'neutral'}>
+                          {team.leaderId === user?.id ? 'Leader' : 'Member'}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-stone-500 mt-0.5">{team.event?.title || 'Campus Competition'}</p>
+                    </div>
+                    {team.event?.id && (
+                      <Button asChild variant="outline" size="sm">
+                        <Link to={`/events/${team.event.id}`}>View Event</Link>
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Join Code Card (Amber-tinted) */}
+                  <div className="p-3.5 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50/70 dark:bg-amber-950/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <span className="text-[10px] font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wider">
+                        Team Invite Code
+                      </span>
+                      <p className="text-xl font-mono font-extrabold tracking-widest text-amber-900 dark:text-amber-100">
+                        {formatTeamCode(team.code)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <CopyButton textToCopy={formatTeamCode(team.code)} label="Copy Code" />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 text-xs bg-white/80 dark:bg-stone-900/80"
+                        onClick={async () => {
+                          const url = `${window.location.origin}/teams/join?code=${team.code}`;
+                          if (navigator.share) {
+                            try {
+                              await navigator.share({
+                                title: `Join team ${team.name} on Eventora`,
+                                text: `Use team code ${formatTeamCode(team.code)} to join our roster:`,
+                                url,
+                              });
+                              return;
+                            } catch {}
+                          }
+                          await copyToClipboard(url);
+                          toast({ title: 'Invite link copied to clipboard' });
+                        }}
+                      >
+                        <Share2 className="h-3.5 w-3.5 mr-1" />
+                        <span>Share Link</span>
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs text-stone-500 pt-1 border-t border-stone-100 dark:border-stone-800">
+                    <span>Members: {team.members?.length || 1} confirmed</span>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setSubmissionEvent({ id: team.eventId, title: team.eventName || 'Event Team' })}
+                        className="h-6 text-[11px] px-2 text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-950/30 gap-1"
+                      >
+                        <FileCode className="h-3 w-3" />
+                        <span>Deliverables</span>
+                      </Button>
+                      <span>Status: {team.status || 'ACTIVE'}</span>
+                    </div>
                   </div>
                 </Card>
               ))
             )}
           </TabsContent>
 
-          {/* Tab 2: Attended Passes, OD Letters & Review */}
+          {/* Tab 3: Attended Passes, OD Letters & Review */}
           <TabsContent value="attended" className="space-y-4">
             {isLoading ? (
               <div className="space-y-4">
-                <div className="h-32 bg-muted/30 rounded-2xl animate-pulse" />
+                <div className="h-32 bg-stone-100 dark:bg-stone-800 rounded-2xl animate-pulse" />
               </div>
             ) : attendedTickets.length === 0 ? (
-              <Card className="border-border p-12 text-center text-muted-foreground text-sm">
+              <Card className="p-12 text-center text-muted-foreground text-sm">
                 No attended events recorded yet. Once scanned at the gate, events appear here.
               </Card>
             ) : (
               attendedTickets.map((tkt) => (
-                <Card key={tkt.id} className="border-border p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <Card key={tkt.id} className="p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
                   <div className="space-y-1 text-center sm:text-left">
                     <div className="flex items-center gap-2">
                       <h3 className="font-bold text-lg text-foreground">{tkt.eventTitle}</h3>
@@ -527,7 +698,7 @@ export const PassportPage: React.FC = () => {
                       onClick={() => handleDownloadOd(tkt)}
                       className="inline-flex items-center gap-1.5 h-10 text-xs font-semibold"
                     >
-                      <Download className="h-4 w-4 text-indigo-500" />
+                      <Download className="h-4 w-4 text-teal-600 dark:text-teal-400" />
                       <span>Download OD Letter</span>
                     </Button>
 
@@ -545,19 +716,19 @@ export const PassportPage: React.FC = () => {
             )}
           </TabsContent>
 
-          {/* Tab 3: Verified Certificates & LinkedIn Share */}
+          {/* Tab 4: Verified Certificates & LinkedIn Share */}
           <TabsContent value="certificates" className="space-y-4">
             {isLoading ? (
               <div className="space-y-4">
-                <div className="h-32 bg-muted/30 rounded-2xl animate-pulse" />
+                <div className="h-32 bg-stone-100 dark:bg-stone-800 rounded-2xl animate-pulse" />
               </div>
             ) : certificates.length === 0 ? (
-              <Card className="border-border p-12 text-center text-muted-foreground text-sm">
+              <Card className="p-12 text-center text-muted-foreground text-sm">
                 Your competition podium finishes and verified certificates will be showcased here.
               </Card>
             ) : (
               certificates.map((cert) => (
-                <Card key={cert.id} className="border-border p-6 flex flex-col sm:flex-row items-center justify-between gap-6">
+                <Card key={cert.id} className="p-6 flex flex-col sm:flex-row items-center justify-between gap-6">
                   <div className="flex items-start gap-4">
                     <div className="h-12 w-12 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
                       <Award className="h-6 w-6" />
@@ -667,6 +838,19 @@ export const PassportPage: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Project Deliverables Submission Modal */}
+      {submissionEvent && (
+        <ProjectSubmissionDialog
+          eventId={submissionEvent.id}
+          eventTitle={submissionEvent.title}
+          isOpen={!!submissionEvent}
+          onClose={() => setSubmissionEvent(null)}
+          onSuccess={() => {
+            refetchAll();
+          }}
+        />
+      )}
     </div>
   );
 };

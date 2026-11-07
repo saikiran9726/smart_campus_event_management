@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Team Invitation - {{teamName}}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
+    .card { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+    .header { background: #8b5cf6; color: #ffffff; padding: 28px; text-align: center; }
+    .header h1 { margin: 0 0 8px 0; font-size: 24px; font-weight: 700; }
+    .header p { margin: 0; font-size: 15px; opacity: 0.9; }
+    .content { padding: 32px; }
+    .info-table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+    .info-table td { padding: 10px 0; border-bottom: 1px solid #f1f5f9; font-size: 15px; }
+    .info-table td.label { color: #64748b; font-weight: 500; width: 35%; }
+    .info-table td.value { color: #0f172a; font-weight: 600; }
+    .btn { display: inline-block; background: #8b5cf6; color: #ffffff !important; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 14px; margin-top: 8px; }
+    .footer { padding: 20px 32px; background: #f8fafc; border-top: 1px solid #e2e8f0; text-align: center; font-size: 13px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1>Team Invitation</h1>
+      <p>{{{teamName}}}</p>
+    </div>
+    <div class="content">
+      <p style="font-size: 16px; margin-top: 0;">Hello,</p>
+      <p><strong>{{inviterName}}</strong> has invited you to join team <strong>"{{teamName}}"</strong> on Eventora.</p>
+
+      <table class="info-table">
+        <tr>
+          <td class="label">Team Name</td>
+          <td class="value">{{teamName}}</td>
+        </tr>
+        <tr>
+          <td class="label">Invited By</td>
+          <td class="value">{{inviterName}}</td>
+        </tr>
+      </table>
+
+      {{#if teamUrl}}
+      <div style="text-align: center; margin: 24px 0;">
+        <a href="{{teamUrl}}" class="btn">View & Accept Invitation</a>
+      </div>
+      {{/if}}
+
+      <p style="font-size: 14px; color: #64748b;">
+        You must log in to your authenticated account to accept or decline this invitation.
+      </p>
+    </div>
+    <div class="footer">
+      <p>Eventora Campus Event Notification Engine &bull; Automated System Notice</p>
+    </div>
+  </div>
+</body>
+</html>

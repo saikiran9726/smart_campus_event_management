@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { ClubMemberRole, UserRole } from '@eventora/shared';
 import { db } from '../db/client';
-import { clubMembers, events, User } from '../db/schema';
+import { clubMembers, clubs, events, User } from '../db/schema';
 import { AppError } from '../lib/app-error';
 import { authenticateRequest } from '../plugins/auth';
 
@@ -84,9 +84,9 @@ export function requireClubRole(
 
     const params = request.params as Record<string, string | undefined>;
     const body = request.body as Record<string, string | undefined> | undefined;
-    const clubId = params[clubIdParam] || body?.[clubIdParam];
+    const rawClubId = params[clubIdParam] || body?.[clubIdParam];
 
-    if (!clubId) {
+    if (!rawClubId) {
       throw new AppError(
         'VALIDATION_FAILED',
         `Missing required club parameter '${clubIdParam}'`,
@@ -94,12 +94,27 @@ export function requireClubRole(
       );
     }
 
+    let targetClubId = rawClubId;
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawClubId);
+    if (!isUuid) {
+      const [foundClub] = await db
+        .select({ id: clubs.id })
+        .from(clubs)
+        .where(eq(clubs.slug, rawClubId))
+        .limit(1);
+
+      if (!foundClub) {
+        throw new AppError('NOT_FOUND', `Club '${rawClubId}' not found.`, 404);
+      }
+      targetClubId = foundClub.id;
+    }
+
     const [membership] = await db
       .select()
       .from(clubMembers)
       .where(
         and(
-          eq(clubMembers.clubId, clubId),
+          eq(clubMembers.clubId, targetClubId),
           eq(clubMembers.userId, request.user.id)
         )
       )
@@ -111,7 +126,7 @@ export function requireClubRole(
         `Insufficient club permissions. Required role: ${clubRoles.join(', ')}.`,
         403,
         {
-          clubId,
+          clubId: targetClubId,
           requiredRoles: clubRoles,
           currentRole: membership?.role ?? 'NON_MEMBER',
         }
@@ -150,10 +165,11 @@ export function requireEventOrganizer(eventIdParam: string) {
       );
     }
 
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(eventId);
     const [event] = await db
-      .select({ clubId: events.clubId })
+      .select({ id: events.id, clubId: events.clubId })
       .from(events)
-      .where(eq(events.id, eventId))
+      .where(isUuid ? eq(events.id, eventId) : eq(events.slug, eventId))
       .limit(1);
 
     if (!event) {

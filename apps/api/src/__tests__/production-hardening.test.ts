@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import pino from 'pino';
 import crypto from 'node:crypto';
 import { eq } from 'drizzle-orm';
@@ -10,10 +10,22 @@ import { env, getProductionEnvErrors } from '../env';
 import { computeOdSignature, verifyOdLetterBySerial } from '../modules/od/service';
 
 describe('Production Hardening & Connectivity Verification Suite (Prompt 19)', () => {
+  let app: any;
+
+  beforeAll(async () => {
+    app = buildServer();
+    await app.ready();
+  });
+
+  afterAll(async () => {
+    if (app) {
+      await app.close();
+    }
+  });
+
   describe('1. Local Connectivity & CORS Preflight (Section A.6)', () => {
     it('returns matching access-control-allow-origin header for http://localhost:3000', async () => {
-      const server = buildServer();
-      const response = await server.inject({
+      const response = await app.inject({
         method: 'OPTIONS',
         url: '/events',
         headers: {
@@ -27,8 +39,7 @@ describe('Production Hardening & Connectivity Verification Suite (Prompt 19)', (
     });
 
     it('rejects preflight and returns NO access-control-allow-origin header for http://evil.example', async () => {
-      const server = buildServer();
-      const response = await server.inject({
+      const response = await app.inject({
         method: 'OPTIONS',
         url: '/events',
         headers: {
@@ -69,9 +80,10 @@ describe('Production Hardening & Connectivity Verification Suite (Prompt 19)', (
 
     it('guarantees x-test-user-id bypass returns 401 when NODE_ENV === production', async () => {
       const originalNodeEnv = env.NODE_ENV;
+      let server: any;
       try {
         (env as any).NODE_ENV = 'production';
-        const server = buildServer();
+        server = buildServer();
 
         const response = await server.inject({
           method: 'GET',
@@ -84,14 +96,16 @@ describe('Production Hardening & Connectivity Verification Suite (Prompt 19)', (
         expect(response.statusCode).toBe(401);
       } finally {
         (env as any).NODE_ENV = originalNodeEnv;
+        if (server) await server.close();
       }
     });
 
     it('guarantees /test/* endpoints are NOT registered and return 404 in production', async () => {
       const originalNodeEnv = env.NODE_ENV;
+      let server: any;
       try {
         (env as any).NODE_ENV = 'production';
-        const server = buildServer();
+        server = buildServer();
 
         const response = await server.inject({
           method: 'POST',
@@ -101,14 +115,16 @@ describe('Production Hardening & Connectivity Verification Suite (Prompt 19)', (
         expect(response.statusCode).toBe(404);
       } finally {
         (env as any).NODE_ENV = originalNodeEnv;
+        if (server) await server.close();
       }
     });
 
     it('guarantees test-pass Turnstile token is NOT accepted in production (returns 403)', async () => {
       const originalNodeEnv = env.NODE_ENV;
+      let server: any;
       try {
         (env as any).NODE_ENV = 'production';
-        const server = buildServer();
+        server = buildServer();
 
         const response = await server.inject({
           method: 'POST',
@@ -125,14 +141,14 @@ describe('Production Hardening & Connectivity Verification Suite (Prompt 19)', (
         expect(body.error?.code).toBe('TURNSTILE_FAILED');
       } finally {
         (env as any).NODE_ENV = originalNodeEnv;
+        if (server) await server.close();
       }
     });
   });
 
   describe('3. Production Health, Readiness & Versioning (Section C.4 & C.7)', () => {
     it('GET /health returns 200 without querying database', async () => {
-      const server = buildServer();
-      const response = await server.inject({
+      const response = await app.inject({
         method: 'GET',
         url: '/health',
       });
@@ -142,8 +158,7 @@ describe('Production Hardening & Connectivity Verification Suite (Prompt 19)', (
     });
 
     it('GET /ready returns 200 when database and schema migrations are ready', async () => {
-      const server = buildServer();
-      const response = await server.inject({
+      const response = await app.inject({
         method: 'GET',
         url: '/ready',
       });
@@ -156,8 +171,7 @@ describe('Production Hardening & Connectivity Verification Suite (Prompt 19)', (
     });
 
     it('GET /version returns current semantic version and commit SHA', async () => {
-      const server = buildServer();
-      const response = await server.inject({
+      const response = await app.inject({
         method: 'GET',
         url: '/version',
       });
@@ -322,8 +336,7 @@ describe('Production Hardening & Connectivity Verification Suite (Prompt 19)', (
         const [existing] = await db.select().from(users).where(eq(users.email, adminEmail));
         expect(existing).toBeUndefined();
 
-        const server = buildServer();
-        // Invoke clerk webhook simulation or check initialRole assignment
+        // Check initialRole assignment against INITIAL_ADMIN_EMAILS
         const allowedAdmins = env.INITIAL_ADMIN_EMAILS.split(',').map((e) => e.trim().toLowerCase());
         expect(allowedAdmins.includes(adminEmail.toLowerCase())).toBe(true);
 
