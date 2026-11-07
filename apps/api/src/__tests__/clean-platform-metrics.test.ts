@@ -2,6 +2,9 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { buildServer } from '../server';
 import { FastifyInstance } from 'fastify';
 import { UserRole } from '@eventora/shared';
+import { db } from '../db/client';
+import { users } from '../db/schema';
+import { eq, or } from 'drizzle-orm';
 
 describe('Clean Platform Metrics & Bot Filtering Regression Suite', () => {
   let app: FastifyInstance;
@@ -11,6 +14,33 @@ describe('Clean Platform Metrics & Bot Filtering Regression Suite', () => {
   beforeAll(async () => {
     app = buildServer();
     await app.ready();
+
+    const existing = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(or(eq(users.clerkId, ADMIN_CLERK_ID), eq(users.email, 'saikiranroopreddy@gmail.com')))
+      .limit(1);
+
+    const first = existing[0];
+    if (!first) {
+      await db.insert(users).values({
+        clerkId: ADMIN_CLERK_ID,
+        email: 'saikiranroopreddy@gmail.com',
+        fullName: 'Sai Kiran Roopreddy',
+        role: UserRole.ADMIN,
+      });
+    } else {
+      await db
+        .update(users)
+        .set({
+          clerkId: ADMIN_CLERK_ID,
+          email: 'saikiranroopreddy@gmail.com',
+          role: UserRole.ADMIN,
+          fullName: 'Sai Kiran Roopreddy',
+          deletedAt: null,
+        })
+        .where(eq(users.id, first.id));
+    }
   });
 
   afterAll(async () => {
