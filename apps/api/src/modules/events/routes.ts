@@ -10,6 +10,49 @@ import { emitSeats } from '../../realtime/io';
 import { ensureEventDoubtRoom, postEventCardToFeed } from '../channels/event-feed';
 import { getLiveWaitlistPosition } from '../waitlist/service';
 import { publicUrl } from '../../lib/r2';
+export interface AgendaSession {
+  time: string;
+  title: string;
+  speaker?: string;
+}
+
+/**
+ * Validates and normalizes agenda sessions into the shape the event page renders
+ * ({ time, title, speaker? }). Blank rows are dropped; the editor-only `id` is removed;
+ * the legacy `speakerOrLocation` key is accepted as an alias for `speaker`.
+ */
+export function normalizeAgenda(agenda: unknown): AgendaSession[] {
+  if (!Array.isArray(agenda)) {
+    throw new AppError('VALIDATION_FAILED', 'Agenda must be an array of sessions.', 400);
+  }
+  const sessions: AgendaSession[] = [];
+  for (const raw of agenda) {
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+      throw new AppError(
+        'VALIDATION_FAILED',
+        'Each agenda session must be an object with a time and title.',
+        400
+      );
+    }
+    const item = raw as Record<string, unknown>;
+    const title = typeof item.title === 'string' ? item.title.trim() : '';
+    if (!title) continue; // ignore blank rows
+    const time = typeof item.time === 'string' ? item.time.trim() : '';
+    const speakerRaw =
+      typeof item.speaker === 'string' && item.speaker.trim()
+        ? item.speaker
+        : typeof item.speakerOrLocation === 'string'
+          ? item.speakerOrLocation
+          : '';
+    const speaker = speakerRaw.trim();
+    if (title.length > 200 || time.length > 50 || speaker.length > 200) {
+      throw new AppError('VALIDATION_FAILED', 'Agenda session text is too long.', 400);
+    }
+    sessions.push(speaker ? { time, title, speaker } : { time, title });
+  }
+  return sessions;
+}
+
 export function computeSeatLabel(remainingCapacity: number, waitlistCount = 0): string {
   if (remainingCapacity > 0) {
     return `${remainingCapacity} seats left`;
@@ -65,7 +108,7 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
           title: body.title,
           slug,
           description: body.description || '',
-          agenda: body.agenda ?? [],
+          agenda: body.agenda !== undefined ? normalizeAgenda(body.agenda) : [],
           category: body.category || 'General',
           posterKey: body.posterKey || null,
           venueId: body.venueId || null,
@@ -170,10 +213,7 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
       };
 
       if (body.agenda !== undefined) {
-        if (!Array.isArray(body.agenda)) {
-          throw new AppError('VALIDATION_FAILED', 'Agenda must be an array of sessions.', 400);
-        }
-        updateData.agenda = body.agenda;
+        updateData.agenda = normalizeAgenda(body.agenda);
       }
 
       if (body.title !== undefined) updateData.title = body.title;
