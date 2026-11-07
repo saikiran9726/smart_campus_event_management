@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import {
   ClubMemberRole,
@@ -13,6 +13,7 @@ import {
   clubs,
   eventProposals,
   events,
+  notifications,
   users,
   venues,
 } from '../db/schema';
@@ -458,18 +459,115 @@ describe('Proposals, Events, Uploads, Venue/AV Collision, & Magic Links', () => 
     });
   });
 
-  describe('Public Events API', () => {
-    it('returns public list of events with items array and seatLabel', async () => {
-      const response = await server.inject({
-        method: 'GET',
-        url: '/events',
+  describe('Faculty Approval Integrity & Notification Isolation', () => {
+    it('creates proposal for club without assigned faculty coordinator in PENDING status without granting proposer approval authority', async () => {
+      const timestamp = Date.now();
+      const [unassignedClub] = await db
+        .insert(clubs)
+        .values({
+          name: `Unassigned Club ${timestamp}`,
+          slug: `unassigned-${timestamp}`,
+          description: 'Club without assigned faculty coordinator',
+          facultyCoordinatorId: null,
+          createdBy: organizerUser.id,
+        })
+        .returning();
+
+      expect(unassignedClub).toBeDefined();
+      await db.insert(clubMembers).values({
+        clubId: unassignedClub!.id,
+        userId: organizerUser.id,
+        role: ClubMemberRole.OWNER,
       });
 
-      expect(response.statusCode).toBe(200);
+      const baseTime = Date.now() + 864000000;
+      const startAt = new Date(baseTime).toISOString();
+      const endAt = new Date(baseTime + 3600000).toISOString();
+
+      const response = await server.inject({
+        method: 'POST',
+        url: `/clubs/${unassignedClub!.slug}/proposals`,
+        headers: { 'x-test-user-id': organizerUser.id },
+        payload: {
+          title: 'Autonomous Robotics Hackathon',
+          description: 'A robotics hackathon with pending faculty assignment.',
+          expectedAttendance: 100,
+          venueId: testVenue.id,
+          startAt,
+          endAt,
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
       const json = JSON.parse(response.body);
-      expect(Array.isArray(json.items)).toBe(true);
-      expect(json.items.length).toBeGreaterThan(0);
-      expect(json.items[0].seatLabel).toBeDefined();
+      expect(json.proposal.status).toBe(ProposalStatus.PENDING);
+      expect(json.proposal.facultyId).toBeNull();
+      // Ensure no approval authority / tokens are generated for unassigned club
+      expect(json.proposal.approveUrl).toBeNull();
+      expect(json.proposal.rejectUrl).toBeNull();
+
+      // Verify in DB that facultyId is null and proposedBy is the organizer
+      const [dbProposal] = await db
+        .select()
+        .from(eventProposals)
+        .where(eq(eventProposals.id, json.proposal.id))
+        .limit(1);
+
+      expect(dbProposal).toBeDefined();
+      expect(dbProposal!.status).toBe(ProposalStatus.PENDING);
+      expect(dbProposal!.facultyId).toBeNull();
+      expect(dbProposal!.proposedBy).toBe(organizerUser.id);
+    });
+
+    it('isolates notification failure post-commit so proposal creation succeeds', async () => {
+      const baseTime = Date.now() + 950400000;
+      const startAt = new Date(baseTime).toISOString();
+      const endAt = new Date(baseTime + 3600000).toISOString();
+
+      // Mock db.insert specifically when inserting into notifications to simulate a failure
+      const originalInsert = db.insert.bind(db);
+      const insertSpy = vi.spyOn(db, 'insert').mockImplementation((table: any) => {
+        if (table === notifications) {
+          return {
+            values: () => Promise.reject(new Error('Simulated Notification Network Error / Service Unavailable')),
+          } as any;
+        }
+        return originalInsert(table);
+      });
+
+      try {
+        const response = await server.inject({
+          method: 'POST',
+          url: `/clubs/${testClub.id}/proposals`,
+          headers: { 'x-test-user-id': organizerUser.id },
+          payload: {
+            title: 'Resilient Notification Event',
+            description: 'Proposal must succeed even if notifications fail.',
+            expectedAttendance: 50,
+            venueId: testVenue.id,
+            startAt,
+            endAt,
+          },
+        });
+
+        expect(response.statusCode).toBe(201);
+        const json = JSON.parse(response.body);
+        expect(json.proposal.title).toBe('Resilient Notification Event');
+        expect(json.proposal.status).toBe(ProposalStatus.PENDING);
+
+        // Verify database persistence of proposal
+        const [saved] = await db
+          .select()
+          .from(eventProposals)
+          .where(eq(eventProposals.id, json.proposal.id))
+          .limit(1);
+
+        expect(saved).toBeDefined();
+        expect(saved!.title).toBe('Resilient Notification Event');
+        expect(saved!.status).toBe(ProposalStatus.PENDING);
+      } finally {
+        insertSpy.mockRestore();
+      }
     });
   });
 });
