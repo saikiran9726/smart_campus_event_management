@@ -27,7 +27,7 @@ const csp = [
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' data: https://fonts.gstatic.com",
   `img-src 'self' data: blob: ${r2BaseUrl} https://img.clerk.com https://images.clerk.dev https://*.r2.cloudflarestorage.com https://*.supabase.co https://*.storage.supabase.co`,
-  `connect-src 'self' ${apiOrigin} ${wsOrigin} https://challenges.cloudflare.com https://*.clerk.accounts.dev https://*.clerk.com https://*.supabase.co https://*.storage.supabase.co https://*.r2.cloudflarestorage.com`,
+  `connect-src 'self' data: ${apiOrigin} ${wsOrigin} https://challenges.cloudflare.com https://*.challenges.cloudflare.com https://*.cloudflarecaptcha.com https://*.clerk.accounts.dev https://*.clerk.com https://*.clerk.com:* https://*.client.protect.clerk.com:* https://*.supabase.co https://*.storage.supabase.co https://*.r2.cloudflarestorage.com`,
   "frame-src 'self' https://challenges.cloudflare.com https://*.clerk.accounts.dev https://*.clerk.com",
   "worker-src 'self' blob:",
   "media-src 'self' data: blob:",
