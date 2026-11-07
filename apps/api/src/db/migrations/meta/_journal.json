@@ -127,6 +127,13 @@
       "when": 1793377000000,
       "tag": "0017_project_submission_system",
       "breakpoints": false
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793378000000,
+      "tag": "0018_notification_delivery_and_preferences",
+      "breakpoints": false
     }
   ]
 }
