@@ -4,6 +4,37 @@ import { z } from 'zod';
 dotenv.config({ path: '../../.env' });
 dotenv.config();
 
+function resolveStorageCredentials() {
+  // 1. Explicit S3 credentials pair
+  if (process.env.S3_ACCESS_KEY_ID && process.env.S3_SECRET_ACCESS_KEY) {
+    return {
+      accessKeyId: process.env.S3_ACCESS_KEY_ID.trim(),
+      secretAccessKey: process.env.S3_SECRET_ACCESS_KEY.trim(),
+    };
+  }
+  // 2. Explicit R2 credentials pair
+  if (process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY) {
+    return {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID.trim(),
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY.trim(),
+    };
+  }
+  // 3. Explicit AWS credentials pair
+  if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+    return {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID.trim(),
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY.trim(),
+    };
+  }
+  // 4. Default fallback for dev/test
+  return {
+    accessKeyId: process.env.S3_ACCESS_KEY_ID?.trim() || process.env.R2_ACCESS_KEY_ID?.trim() || 'placeholder_r2_access_key_id',
+    secretAccessKey: process.env.S3_SECRET_ACCESS_KEY?.trim() || process.env.R2_SECRET_ACCESS_KEY?.trim() || 'placeholder_r2_secret_access_key',
+  };
+}
+
+const resolvedStorage = resolveStorageCredentials();
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().default(4000),
@@ -25,8 +56,8 @@ const envSchema = z.object({
   S3_ENDPOINT: z.string().url().optional(),
   S3_REGION: z.string().default('auto'),
   R2_ACCOUNT_ID: z.string().optional(),
-  R2_ACCESS_KEY_ID: z.string().default(process.env.R2_ACCESS_KEY_ID || process.env.S3_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID || 'placeholder_r2_access_key_id'),
-  R2_SECRET_ACCESS_KEY: z.string().default(process.env.R2_SECRET_ACCESS_KEY || process.env.S3_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY || 'placeholder_r2_secret_access_key'),
+  R2_ACCESS_KEY_ID: z.string().default(resolvedStorage.accessKeyId),
+  R2_SECRET_ACCESS_KEY: z.string().default(resolvedStorage.secretAccessKey),
   R2_BUCKET: z.string().default('eventora-assets'),
   R2_PUBLIC_BASE_URL: z.string().default('https://assets.eventora.campus.edu'),
 
@@ -139,6 +170,11 @@ export function getProductionEnvErrors(e: Record<string, any>): string[] {
   }
   if (e.WHATSAPP_PROVIDER === 'baileys') {
     errors.push('WHATSAPP_PROVIDER cannot be "baileys" in production');
+  }
+  if (e.S3_ENDPOINT && String(e.S3_ENDPOINT).includes('supabase.co')) {
+    if (e.R2_ACCESS_KEY_ID && String(e.R2_ACCESS_KEY_ID).length === 64) {
+      errors.push('R2_ACCESS_KEY_ID is 64 characters long, which is a Secret Access Key. Supabase S3 Access Key ID must be 32 characters');
+    }
   }
   if (!e.S3_ENDPOINT && (!e.R2_ACCOUNT_ID || String(e.R2_ACCOUNT_ID).trim() === '')) {
     errors.push('R2_ACCOUNT_ID is required when S3_ENDPOINT is not set');

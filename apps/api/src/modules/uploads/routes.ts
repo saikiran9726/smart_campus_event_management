@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { ALLOWED_UPLOAD_MIME, MAX_UPLOAD_BYTES } from '@eventora/shared';
+import { env } from '../../env';
 import { AppError } from '../../lib/app-error';
 import { buildKey, headObject, presignPut } from '../../lib/r2';
 import { requireAuth } from '../../plugins/auth';
@@ -88,11 +89,25 @@ export async function uploadRoutes(server: FastifyInstance): Promise<void> {
         sizeBytes,
       });
 
+      const storageHost = env.S3_ENDPOINT ? new URL(env.S3_ENDPOINT).host : (env.R2_ACCOUNT_ID ? `${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com` : 'local');
+      request.log.info(
+        {
+          purpose,
+          mimeType,
+          sizeBytes,
+          objectKey,
+          storageHost,
+          bucket: env.R2_BUCKET,
+        },
+        'Presigned upload URL generated'
+      );
+
       const expiresAt = new Date(Date.now() + 600 * 1000).toISOString();
 
       return reply.status(200).send({
         uploadUrl,
         objectKey,
+        key: objectKey,
         expiresAt,
       });
     }
@@ -103,8 +118,8 @@ export async function uploadRoutes(server: FastifyInstance): Promise<void> {
     '/uploads/confirm',
     { preHandler: [requireAuth] },
     async (request: FastifyRequest, reply: FastifyReply) => {
-      const body = request.body as { objectKey?: string; expectedSizeBytes?: number };
-      const objectKey = body.objectKey?.trim();
+      const body = request.body as { objectKey?: string; key?: string; expectedSizeBytes?: number };
+      const objectKey = (body.objectKey || body.key)?.trim();
 
       if (!objectKey) {
         throw new AppError('VALIDATION_FAILED', 'objectKey is required.', 400);

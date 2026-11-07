@@ -497,6 +497,7 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
       return reply.status(200).send({
         event: {
           ...event,
+          posterUrl: event.posterKey ? publicUrl(event.posterKey) : null,
           winners: eventWinners.map((w) => ({
             rank: w.rank,
             teamName: w.teamName || `Rank ${w.rank}`,
