@@ -3,9 +3,28 @@ import path from 'path';
 import fs from 'fs';
 
 test.describe('Eventora Pass 4: Comprehensive Real Browser & Verification Suite', () => {
-  const WEB_URL = 'http://localhost:5173';
+  const WEB_URL = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:5173';
   const screenshotDir = path.resolve('docs/screenshots/pass4');
-  const AXE_PATH = 'C:/sai projects/smartcampus/node_modules/.pnpm/axe-core@4.14.0/node_modules/axe-core/axe.min.js';
+
+  function resolveAxePath(): string {
+    const candidates = [
+      path.resolve(process.cwd(), 'node_modules/.pnpm/axe-core@4.14.0/node_modules/axe-core/axe.min.js'),
+      path.resolve(process.cwd(), 'node_modules/axe-core/axe.min.js'),
+    ];
+    for (const c of candidates) {
+      if (fs.existsSync(c)) return c;
+    }
+    const pnpmDir = path.resolve(process.cwd(), 'node_modules/.pnpm');
+    if (fs.existsSync(pnpmDir)) {
+      const axeDir = fs.readdirSync(pnpmDir).find((d) => d.startsWith('axe-core@'));
+      if (axeDir) {
+        const candidate = path.join(pnpmDir, axeDir, 'node_modules/axe-core/axe.min.js');
+        if (fs.existsSync(candidate)) return candidate;
+      }
+    }
+    return '';
+  }
+  const AXE_PATH = resolveAxePath();
 
   test.beforeAll(() => {
     if (!fs.existsSync(screenshotDir)) {
@@ -20,7 +39,7 @@ test.describe('Eventora Pass 4: Comprehensive Real Browser & Verification Suite'
     await page.goto(`${WEB_URL}/`, { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => localStorage.setItem('eventora_test_user_id', 'user_student_001'));
 
-    const eventSlug = 'code-sprint-1793892525400';
+    const eventSlug = 'hackcampus-2026';
 
     // 2. Student A navigates to competition event page
     await page.goto(`${WEB_URL}/events/${eventSlug}`, { waitUntil: 'domcontentloaded' });
