@@ -25,8 +25,8 @@ const envSchema = z.object({
   S3_ENDPOINT: z.string().url().optional(),
   S3_REGION: z.string().default('auto'),
   R2_ACCOUNT_ID: z.string().optional(),
-  R2_ACCESS_KEY_ID: z.string().default('placeholder_r2_access_key_id'),
-  R2_SECRET_ACCESS_KEY: z.string().default('placeholder_r2_secret_access_key'),
+  R2_ACCESS_KEY_ID: z.string().default(process.env.R2_ACCESS_KEY_ID || process.env.S3_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID || 'placeholder_r2_access_key_id'),
+  R2_SECRET_ACCESS_KEY: z.string().default(process.env.R2_SECRET_ACCESS_KEY || process.env.S3_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY || 'placeholder_r2_secret_access_key'),
   R2_BUCKET: z.string().default('eventora-assets'),
   R2_PUBLIC_BASE_URL: z.string().default('https://assets.eventora.campus.edu'),
 

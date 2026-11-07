@@ -158,4 +158,18 @@ describe('Configurable S3 / Supabase Storage & Presigning (Prompt 22)', () => {
       expect(errors).toHaveLength(0);
     });
   });
+  describe('4. Credential Self-Healing & Inversion Handling', () => {
+    it('automatically detects and inverts swapped 64-char secret and 32-char access key', async () => {
+      const swappedClient = createStorageClient({
+        endpoint: 'https://myproject.supabase.co/storage/v1/s3',
+        region: 'ap-south-1',
+        accessKeyId: '8516bb2fd1cc2f87b9d091d799905bbbf739b5c41fc7ac588321675adbb18217', // 64 hex
+        secretAccessKey: '005a8130d02bfcb545c2d9d00bb09df2', // 32 hex
+      });
+
+      const creds = await swappedClient.config.credentials();
+      expect(creds.accessKeyId).toBe('005a8130d02bfcb545c2d9d00bb09df2');
+      expect(creds.secretAccessKey).toBe('8516bb2fd1cc2f87b9d091d799905bbbf739b5c41fc7ac588321675adbb18217');
+    });
+  });
 });

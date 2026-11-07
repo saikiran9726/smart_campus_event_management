@@ -19,8 +19,20 @@ export interface StorageClientConfig {
 export function createStorageClient(config?: StorageClientConfig): S3Client {
   const s3Endpoint = config && 'endpoint' in config ? config.endpoint : env.S3_ENDPOINT;
   const s3Region = config?.region ?? env.S3_REGION ?? 'auto';
-  const accessKeyId = config?.accessKeyId ?? env.R2_ACCESS_KEY_ID;
-  const secretAccessKey = config?.secretAccessKey ?? env.R2_SECRET_ACCESS_KEY;
+  let accessKeyId = config?.accessKeyId ?? env.R2_ACCESS_KEY_ID;
+  let secretAccessKey = config?.secretAccessKey ?? env.R2_SECRET_ACCESS_KEY;
+
+  // Self-healing: if Supabase/S3 credentials were accidentally inverted (accessKeyId=64 hex, secretAccessKey=32 hex)
+  if (
+    accessKeyId &&
+    secretAccessKey &&
+    /^[0-9a-f]{64}$/i.test(accessKeyId.trim()) &&
+    /^[0-9a-f]{32}$/i.test(secretAccessKey.trim())
+  ) {
+    const temp = accessKeyId.trim();
+    accessKeyId = secretAccessKey.trim();
+    secretAccessKey = temp;
+  }
   const accountId = config?.accountId ?? env.R2_ACCOUNT_ID;
 
   if (s3Endpoint) {
