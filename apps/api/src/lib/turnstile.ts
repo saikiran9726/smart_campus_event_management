@@ -35,9 +35,9 @@ export async function verifyTurnstile(
     const formData = new URLSearchParams();
     formData.append('secret', env.TURNSTILE_SECRET_KEY);
     formData.append('response', token);
-    if (ip) {
-      formData.append('remoteip', ip);
-    }
+    // Note: We intentionally omit remoteip because the backend runs behind reverse proxies
+    // (Render load balancers / Envoy) while the client interacts via Cloudflare Pages edge.
+    // Cloudflare siteverify rejects mismatched remoteip with 'invalid-remoteip'.
 
     const response = await fetch(
       'https://challenges.cloudflare.com/turnstile/v0/siteverify',
@@ -47,12 +47,39 @@ export async function verifyTurnstile(
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
+        signal: AbortSignal.timeout(6000),
       }
     );
 
-    const data = (await response.json()) as { success: boolean };
-    return data.success === true;
+    if (!response.ok) {
+      console.warn('[Turnstile] Cloudflare siteverify HTTP error:', response.status);
+      return false;
+    }
+
+    const data = (await response.json()) as {
+      success: boolean;
+      'error-codes'?: string[];
+      challenge_ts?: string;
+      hostname?: string;
+      action?: string;
+      cdata?: string;
+    };
+
+    if (!data.success) {
+      console.warn('[Turnstile] Verification failed:', {
+        errorCodes: data['error-codes'],
+        hostname: data.hostname,
+        tokenPrefix: token.substring(0, 10),
+      });
+      return false;
+    }
+
+    return true;
   } catch (error) {
+    console.error(
+      '[Turnstile] Network error or timeout during verification:',
+      error instanceof Error ? error.message : error
+    );
     return false;
   }
 }
@@ -71,13 +98,12 @@ export async function requireTurnstile(
     (body?.['cf-turnstile-response'] as string | undefined) ??
     (body?.turnstileToken as string | undefined);
 
-  const clientIp = request.ip;
-  const isValid = await verifyTurnstile(token, clientIp);
+  const isValid = await verifyTurnstile(token);
 
   if (!isValid) {
     throw new AppError(
       'TURNSTILE_FAILED',
-      'Turnstile verification failed. Please refresh and complete the security check.',
+      'Turnstile verification failed. Please complete the security check and try again.',
       403
     );
   }

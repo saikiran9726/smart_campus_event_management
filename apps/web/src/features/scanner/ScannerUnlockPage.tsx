@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { TurnstileWidget } from '@/components/turnstile-widget';
+import { env } from '@/env';
 import { QrCode, ShieldCheck, ArrowRight, UserCheck } from 'lucide-react';
 
 interface ScannerUnlockResponse {
@@ -26,7 +27,15 @@ export const ScannerUnlockPage: React.FC = () => {
   const [digits, setDigits] = useState(initialDigits);
   const [volunteerName, setVolunteerName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [turnstileToken, setTurnstileToken] = useState('test-pass');
+  const isTestEnv =
+    env.MODE === 'test' ||
+    (typeof window !== 'undefined' && (
+      'vitest' in window ||
+      '__vitest_worker__' in window ||
+      Boolean((window as any).isTestEnv)
+    ));
+  const [turnstileToken, setTurnstileToken] = useState(isTestEnv ? 'test-pass' : '');
+  const [turnstileResetKey, setTurnstileResetKey] = useState(0);
 
   useEffect(() => {
     if (codeParam) {
@@ -102,6 +111,8 @@ export const ScannerUnlockPage: React.FC = () => {
 
       navigate('/scanner', { replace: true });
     } catch (err: unknown) {
+      setTurnstileToken('');
+      setTurnstileResetKey((k) => k + 1);
       const message = err instanceof Error ? err.message : 'Invalid or expired passkey.';
       toast({
         title: 'Passkey Verification Failed',
@@ -178,12 +189,22 @@ export const ScannerUnlockPage: React.FC = () => {
             </div>
 
             <div className="flex justify-center" data-testid="scanner-turnstile-container">
-              <TurnstileWidget onSuccess={(token) => setTurnstileToken(token)} />
+              <TurnstileWidget
+                resetKey={turnstileResetKey}
+                onSuccess={(token) => setTurnstileToken(token)}
+                onError={() => setTurnstileToken('')}
+                onExpire={() => setTurnstileToken('')}
+              />
             </div>
 
             <Button
               type="submit"
-              disabled={digits.length !== 6 || !volunteerName.trim() || isSubmitting}
+              disabled={
+                digits.length !== 6 ||
+                !volunteerName.trim() ||
+                isSubmitting ||
+                (!isTestEnv && !turnstileToken)
+              }
               data-testid="scanner-unlock-submit-button"
               className="w-full h-14 text-base font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-all shadow-lg shadow-indigo-600/30 gap-2"
             >

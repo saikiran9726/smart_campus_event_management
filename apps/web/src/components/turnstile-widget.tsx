@@ -27,6 +27,7 @@ export interface TurnstileWidgetProps {
   onExpire?: () => void;
   className?: string;
   testMode?: boolean;
+  resetKey?: number | string;
 }
 
 export const TurnstileWidget: React.FC<TurnstileWidgetProps> = ({
@@ -35,6 +36,7 @@ export const TurnstileWidget: React.FC<TurnstileWidgetProps> = ({
   onExpire,
   className,
   testMode,
+  resetKey,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
@@ -54,6 +56,16 @@ export const TurnstileWidget: React.FC<TurnstileWidgetProps> = ({
     (typeof process !== 'undefined' && (process.env?.NODE_ENV === 'test' || process.env?.VITEST === 'true')) ||
     typeof (globalThis as any).vi !== 'undefined' ||
     (typeof window !== 'undefined' && ('vitest' in window || '__vitest_worker__' in window || (window as any).isTestEnv));
+
+  useEffect(() => {
+    if (resetKey !== undefined && widgetIdRef.current && window.turnstile) {
+      try {
+        window.turnstile.reset(widgetIdRef.current);
+      } catch {
+        // ignore reset errors
+      }
+    }
+  }, [resetKey]);
 
   useEffect(() => {
     if (isTest) {

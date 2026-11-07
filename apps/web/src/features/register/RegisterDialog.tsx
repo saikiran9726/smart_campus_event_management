@@ -19,6 +19,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { TurnstileWidget } from '@/components/turnstile-widget';
+import { env } from '@/env';
 import { SandboxCheckout } from './SandboxCheckout';
 import { toast } from '@/components/ui/use-toast';
 import {
@@ -81,7 +82,15 @@ export const RegisterDialog: React.FC<RegisterDialogProps> = ({
   const [step, setStep] = useState<'FORM' | 'SUBMISSION' | 'REVIEW'>('FORM');
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [turnstileToken, setTurnstileToken] = useState<string>('test-pass');
+  const isTestEnv =
+    env.MODE === 'test' ||
+    (typeof window !== 'undefined' && (
+      'vitest' in window ||
+      '__vitest_worker__' in window ||
+      Boolean((window as any).isTestEnv)
+    ));
+  const [turnstileToken, setTurnstileToken] = useState<string>(isTestEnv ? 'test-pass' : '');
+  const [turnstileResetKey, setTurnstileResetKey] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [serverError, setServerError] = useState<{ code: string; message: string; details?: unknown } | null>(null);
 
@@ -658,6 +667,11 @@ export const RegisterDialog: React.FC<RegisterDialogProps> = ({
           message: err.message,
           details: err.details,
         });
+
+        if (err.code === 'TURNSTILE_FAILED') {
+          setTurnstileToken('');
+          setTurnstileResetKey((prev) => prev + 1);
+        }
 
         if (err.code === 'VALIDATION_FAILED' && typeof err.details === 'object' && err.details) {
           const detailsObj = err.details as Record<string, string>;
@@ -1279,6 +1293,37 @@ export const RegisterDialog: React.FC<RegisterDialogProps> = ({
               </div>
             )}
 
+            {/* Turnstile Bot Verification (Individual Registrations) */}
+            {regMode === 'INDIVIDUAL' && (
+              <div
+                className="p-3.5 rounded-xl border border-border bg-card space-y-2 text-xs"
+                data-testid="registration-turnstile-container"
+              >
+                <div className="flex items-center gap-1.5 font-semibold text-foreground">
+                  <ShieldCheck className="h-4 w-4 text-emerald-500" />
+                  <span>Security Verification</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Complete the security check below to confirm your attendance pass.
+                </p>
+                <div className="pt-1 flex justify-center">
+                  <TurnstileWidget
+                    resetKey={turnstileResetKey}
+                    onSuccess={(token) => {
+                      setTurnstileToken(token);
+                      setServerError(null);
+                    }}
+                    onError={() => {
+                      setTurnstileToken('');
+                    }}
+                    onExpire={() => {
+                      setTurnstileToken('');
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
             {/* Action Buttons: Back vs Confirm */}
             <div className="flex gap-3 pt-3 border-t border-border">
               <Button
@@ -1293,7 +1338,7 @@ export const RegisterDialog: React.FC<RegisterDialogProps> = ({
               </Button>
               <Button
                 type="button"
-                disabled={isSubmitting}
+                disabled={isSubmitting || (regMode === 'INDIVIDUAL' && !isTestEnv && !turnstileToken)}
                 onClick={handleFinalSubmit}
                 className="flex-1 h-12 min-h-12 font-semibold shadow-md"
                 data-testid="confirm-registration-btn"
@@ -1304,6 +1349,8 @@ export const RegisterDialog: React.FC<RegisterDialogProps> = ({
                   ? 'Confirm & Register Team'
                   : regMode === 'TEAM_JOIN'
                   ? 'Confirm & Join Team'
+                  : !isTestEnv && !turnstileToken && regMode === 'INDIVIDUAL'
+                  ? 'Awaiting Security Check...'
                   : pricePaise && pricePaise > 0
                   ? `Proceed to Pay ₹${(pricePaise / 100).toFixed(2)}`
                   : 'Confirm Registration'}
@@ -1870,11 +1917,6 @@ export const RegisterDialog: React.FC<RegisterDialogProps> = ({
                     );
                   })
                 )}
-
-                {/* Turnstile Security Widget */}
-                <div className="pt-2">
-                  <TurnstileWidget onSuccess={(token) => setTurnstileToken(token)} />
-                </div>
 
                 {/* Submit Buttons */}
                 <div className="flex gap-3 pt-3 border-t border-border">
