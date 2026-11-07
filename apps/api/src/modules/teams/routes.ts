@@ -285,7 +285,20 @@ export async function teamRoutes(server: FastifyInstance): Promise<void> {
     '/events/:eventId/close-checkin',
     { preHandler: [requireAuth, requireEventOrganizer('eventId')] },
     async (request: FastifyRequest, reply: FastifyReply) => {
-      const { eventId } = request.params as { eventId: string };
+      const { eventId: rawEventId } = request.params as { eventId: string };
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawEventId);
+
+      const [existingEvent] = await db
+        .select({ id: events.id })
+        .from(events)
+        .where(isUuid ? eq(events.id, rawEventId) : eq(events.slug, rawEventId))
+        .limit(1);
+
+      if (!existingEvent) {
+        throw new AppError('NOT_FOUND', `Event '${rawEventId}' not found.`, 404);
+      }
+
+      const eventId = existingEvent.id;
 
       const [updated] = await db
         .update(events)
@@ -315,15 +328,21 @@ export async function teamRoutes(server: FastifyInstance): Promise<void> {
     '/events/:eventId/teams',
     { preHandler: [requireAuth, requireEventOrganizer('eventId')] },
     async (request: FastifyRequest, reply: FastifyReply) => {
-      const { eventId } = request.params as { eventId: string };
+      const { eventId: rawEventId } = request.params as { eventId: string };
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawEventId);
       const [event] = await db
         .select()
         .from(events)
-        .where(eq(events.id, eventId))
+        .where(isUuid ? eq(events.id, rawEventId) : eq(events.slug, rawEventId))
         .limit(1);
 
-      const minTeamSize = event?.minTeamSize ?? 1;
-      const maxTeamSize = event?.maxTeamSize ?? 4;
+      if (!event) {
+        throw new AppError('NOT_FOUND', `Event '${rawEventId}' not found.`, 404);
+      }
+
+      const eventId = event.id;
+      const minTeamSize = event.minTeamSize ?? 1;
+      const maxTeamSize = event.maxTeamSize ?? 4;
 
       const teamsList = await db
         .select()

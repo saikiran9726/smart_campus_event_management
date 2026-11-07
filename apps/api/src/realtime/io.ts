@@ -118,6 +118,26 @@ export function getIO(): Server<
   return ioInstance;
 }
 
+export function safeGetIO(): Server<
+  ClientToServerEvents,
+  ServerToClientEvents,
+  InterServerEvents,
+  SocketData
+> | null {
+  return ioInstance;
+}
+
+export function resetIO(): void {
+  if (ioInstance) {
+    try {
+      ioInstance.close();
+    } catch {
+      // Ignore
+    }
+    ioInstance = null;
+  }
+}
+
 /**
  * Emits updated seat availability for a live event to room `event:{eventId}`
  */

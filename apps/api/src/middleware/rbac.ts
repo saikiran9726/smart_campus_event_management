@@ -165,10 +165,11 @@ export function requireEventOrganizer(eventIdParam: string) {
       );
     }
 
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(eventId);
     const [event] = await db
-      .select({ clubId: events.clubId })
+      .select({ id: events.id, clubId: events.clubId })
       .from(events)
-      .where(eq(events.id, eventId))
+      .where(isUuid ? eq(events.id, eventId) : eq(events.slug, eventId))
       .limit(1);
 
     if (!event) {

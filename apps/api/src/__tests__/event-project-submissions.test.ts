@@ -32,11 +32,12 @@ describe('Eventora: Event-Specific Configurable Project Submission Regression Su
   beforeAll(async () => {
     await server.ready();
 
-    // 0. Strict database safety verification: MUST be eventora_venue_test
+    // 0. Strict database safety verification: MUST be isolated test database (strictly reject production)
     const dbRes = await db.execute<{ current_database: string }>(
       sql`SELECT current_database() as current_database;`
     );
-    expect(dbRes.rows[0]?.current_database).toBe('eventora_venue_test');
+    expect(dbRes.rows[0]?.current_database).not.toBe('eventora');
+    expect(['eventora_venue_test', 'eventora_test']).toContain(dbRes.rows[0]?.current_database);
 
     const ts = Date.now();
 

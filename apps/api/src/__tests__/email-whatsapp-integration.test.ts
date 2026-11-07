@@ -46,13 +46,14 @@ describe('Complete Email + WhatsApp Delivery Integration Suite', () => {
   beforeAll(async () => {
     await server.ready();
 
-    // Verify connecting to test database only
+    // Verify connecting to test database only (strictly reject production)
     const dbNameRes = await db.execute<{ current_database: string }>(
       'SELECT current_database()' as any
     );
     const dbName = (dbNameRes.rows[0] as any)?.current_database;
-    if (dbName !== 'eventora_venue_test') {
-      throw new Error(`ABORT: Database is '${dbName}', expected 'eventora_venue_test'`);
+    const isTestDb = ['eventora_venue_test', 'eventora_test'].includes(dbName) || (dbName && dbName.endsWith('_test'));
+    if (!isTestDb || dbName === 'eventora') {
+      throw new Error(`ABORT: Database is '${dbName}', expected isolated test database`);
     }
 
     const ts = Date.now();

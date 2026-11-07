@@ -47,13 +47,14 @@ describe('Complete Notification, Email Delivery & Automated Reminder Engine Suit
   beforeAll(async () => {
     await server.ready();
 
-    // Verify connecting to test database
+    // Verify connecting to test database (strictly reject production)
     const dbNameRes = await db.execute<{ current_database: string }>(
       'SELECT current_database()' as any
     );
     const dbName = (dbNameRes.rows[0] as any)?.current_database;
-    if (dbName !== 'eventora_venue_test') {
-      throw new Error(`ABORT: Running tests against database '${dbName}', expected 'eventora_venue_test'`);
+    const isTestDb = ['eventora_venue_test', 'eventora_test'].includes(dbName) || (dbName && dbName.endsWith('_test'));
+    if (!isTestDb || dbName === 'eventora') {
+      throw new Error(`ABORT: Running tests against prohibited database '${dbName}', expected isolated test database`);
     }
 
     const ts = Date.now();
