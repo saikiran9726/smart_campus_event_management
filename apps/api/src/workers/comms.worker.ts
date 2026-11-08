@@ -349,17 +349,28 @@ export async function processCommsQueueOnce(): Promise<number> {
       const currentAttempts = Number(item.attempts ?? (item as any).attempts ?? 0);
       const nextAttempt = currentAttempts + 1;
       const isExhausted = nextAttempt >= 5;
-      await db
-        .update(notifications)
-        .set({
-          status: isExhausted ? 'FAILED' : 'QUEUED',
-          error: err.message || 'Unexpected processing error',
-          attempts: nextAttempt,
-          runAt: isExhausted
-            ? (item.runAt ?? (item as any).run_at)
-            : new Date(Date.now() + calculateBackoffMs(nextAttempt)),
-        })
-        .where(eq(notifications.id, item.id));
+      try {
+        await db
+          .update(notifications)
+          .set({
+            status: isExhausted ? 'FAILED' : 'QUEUED',
+            error: err.message || 'Unexpected processing error',
+            attempts: nextAttempt,
+            // Only reschedule while retrying. When exhausted, leave run_at untouched:
+            // the raw-SQL row value is a string (not a Date) and cannot be written back.
+            ...(isExhausted
+              ? {}
+              : { runAt: new Date(Date.now() + calculateBackoffMs(nextAttempt)) }),
+          })
+          .where(eq(notifications.id, item.id));
+      } catch (updateErr: any) {
+        // A single bad row must never abort the rest of the batch (poison-pill guard).
+        console.error(
+          '[Comms Worker] Could not record failure for notification',
+          item.id,
+          updateErr?.message ?? updateErr
+        );
+      }
     }
   }
 
