@@ -47,7 +47,7 @@ export default defineConfig({
       },
     },
     {
-      command: 'pnpm --filter web dev --port 5173',
+      command: 'pnpm --filter web dev --port 5173 --mode test',
       url: 'http://localhost:5173',
       reuseExistingServer: true,
       timeout: 60000,
