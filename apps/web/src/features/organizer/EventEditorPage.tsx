@@ -180,7 +180,16 @@ export const EventEditorPage: React.FC = () => {
         setSubmissionDeadline(new Date(eventData.submissionDeadlineAt || eventData.submissionDeadline).toISOString().slice(0, 16));
       }
       if (Array.isArray(eventData.agenda)) {
-        setAgenda(eventData.agenda);
+        // Stored sessions have no editor `id` and use `speaker`; normalize so rows can be
+        // edited/removed individually (removal filters by id).
+        setAgenda(
+          eventData.agenda.map((a: Partial<AgendaItem> & { speaker?: string }, i: number) => ({
+            id: a.id ?? `agenda-${i}-${Date.now()}`,
+            time: a.time ?? '',
+            title: a.title ?? '',
+            speakerOrLocation: a.speakerOrLocation ?? a.speaker ?? '',
+          }))
+        );
       }
     }
   }, [eventData]);
@@ -273,7 +282,13 @@ const handleAddAgenda = () => {
         pricePaise: isPaid ? Math.round(priceRupees * 100) : 0,
         isPaid,
         posterKey,
-        agenda,
+        agenda: agenda
+          .filter((a) => a.title.trim().length > 0)
+          .map((a) => ({
+            time: a.time.trim(),
+            title: a.title.trim(),
+            speaker: (a.speakerOrLocation ?? '').trim() || undefined,
+          })),
         registrationOpensAt: registrationOpensAt ? new Date(registrationOpensAt).toISOString() : undefined,
         registrationClosesAt: registrationClosesAt ? new Date(registrationClosesAt).toISOString() : undefined,
         isCompetition,

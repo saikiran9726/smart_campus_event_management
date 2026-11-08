@@ -82,7 +82,7 @@ export interface EventDetailData {
     logoUrl?: string;
     leadName?: string;
   };
-  agenda?: Array<{ time: string; title: string; speaker?: string }>;
+  agenda?: Array<{ time?: string; title: string; speaker?: string; speakerOrLocation?: string }>;
   reviews?: {
     average: number;
     count: number;
@@ -355,8 +355,10 @@ export const EventPage: React.FC = () => {
                     </span>
                     <div className="space-y-0.5">
                       <p className="font-semibold text-foreground">{item.title}</p>
-                      {item.speaker && (
-                        <p className="text-xs text-muted-foreground">{item.speaker}</p>
+                      {(item.speaker || item.speakerOrLocation) && (
+                        <p className="text-xs text-muted-foreground">
+                          {item.speaker || item.speakerOrLocation}
+                        </p>
                       )}
                     </div>
                   </div>

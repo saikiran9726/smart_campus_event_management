@@ -132,6 +132,14 @@ export const TurnstileWidget: React.FC<TurnstileWidgetProps> = ({
     };
   }, [isTest]);
 
+  if (!isTest && env.PROD && /^[123]x0{4,}/.test(env.VITE_TURNSTILE_SITE_KEY)) {
+    return (
+      <div role="alert" className="text-xs text-destructive p-2 rounded bg-destructive/10">
+        Security check is misconfigured on this site (test key in a production build). Please contact the organizers.
+      </div>
+    );
+  }
+
   if (isTest) {
     return (
       <div data-testid="turnstile-test-bypass" className="text-xs text-muted-foreground p-2 bg-muted/40 rounded">

@@ -6,6 +6,19 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const webRoot = path.resolve(__dirname, '..');
 
+// Fail the Cloudflare Pages build (not the browser) if the Turnstile site key is missing or is
+// a Cloudflare test key: such a build "works" but every registration is rejected by the real secret.
+if (process.env.CF_PAGES === '1') {
+  const siteKey = process.env.VITE_TURNSTILE_SITE_KEY || '';
+  if (!siteKey || /^[123]x0{4,}/.test(siteKey)) {
+    console.error(
+      'ERROR: VITE_TURNSTILE_SITE_KEY is missing or is a Cloudflare test key. ' +
+        'Set the real site key (starts with 0x4...) in Cloudflare Pages -> Settings -> Variables and secrets -> Production, then redeploy.'
+    );
+    process.exit(1);
+  }
+}
+
 const apiUrl = process.env.VITE_API_URL || 'http://localhost:4000';
 let apiOrigin = apiUrl;
 let wsOrigin = 'ws://localhost:4000';

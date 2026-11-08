@@ -33,18 +33,30 @@ export function computeProfileCompleteness(user: {
   };
 }
 
+// Free-text profile fields: blank is ignored by the handler, but a non-blank value
+// must be meaningful (rejects accidental one-character entries such as "b").
+const profileText = (max: number) =>
+  z
+    .string()
+    .max(max)
+    .nullable()
+    .optional()
+    .refine((v) => v == null || v.trim() === '' || v.trim().length >= 2, {
+      message: 'Must be at least 2 characters',
+    });
+
 const updateMeSchema = z.object({
   fullName: z.string().min(1).max(100).optional(),
   name: z.string().min(1).max(100).optional(),
   rollNumber: z.string().min(1).max(50).nullable().optional(),
   roll_number: z.string().min(1).max(50).nullable().optional(),
-  collegeName: z.string().max(150).nullable().optional(),
-  college_name: z.string().max(150).nullable().optional(),
-  department: z.string().max(100).nullable().optional(),
+  collegeName: profileText(150),
+  college_name: profileText(150),
+  department: profileText(100),
   year: z.number().int().min(1).max(6).nullable().optional(),
   yearOfStudy: z.number().int().min(1).max(6).nullable().optional(),
-  program: z.string().max(100).nullable().optional(),
-  course: z.string().max(100).nullable().optional(),
+  program: profileText(100),
+  course: profileText(100),
   phone: z.string().max(25).nullable().optional(),
   avatarUrl: z.string().url().nullable().optional(),
 });
