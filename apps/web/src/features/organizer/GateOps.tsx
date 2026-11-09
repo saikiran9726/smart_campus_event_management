@@ -48,6 +48,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
 import { copyToClipboard } from '@/lib/clipboard';
+import { EventParticipantsTab } from './EventParticipantsTab';
 
 interface GateStats {
   checkedIn: number;
@@ -707,6 +708,9 @@ export const GateOps: React.FC = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Event Participants & Attendance Overview */}
+      {eventId && <EventParticipantsTab eventId={eventId} />}
 
       {/* Authoritative Attendee Responses Ledger */}
       <Card className="border-border">

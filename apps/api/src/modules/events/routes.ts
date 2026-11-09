@@ -10,6 +10,7 @@ import { emitSeats } from '../../realtime/io';
 import { ensureEventDoubtRoom, postEventCardToFeed } from '../channels/event-feed';
 import { getLiveWaitlistPosition } from '../waitlist/service';
 import { publicUrl } from '../../lib/r2';
+import { exportEventParticipants, getEventParticipants } from './participants';
 export interface AgendaSession {
   time: string;
   title: string;
@@ -632,6 +633,49 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
           userRegistration,
         },
       });
+    }
+  );
+
+  // 12. GET /events/:eventId/participants (Organizer / Faculty Coordinator / Admin)
+  server.get(
+    '/events/:eventId/participants',
+    { preHandler: [requireAuth] },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { eventId } = request.params as { eventId: string };
+      const query = request.query as {
+        status?: 'registered' | 'attended' | 'no_show' | 'all';
+        q?: string;
+        department?: string;
+        year?: number | string;
+        page?: number;
+        limit?: number;
+      };
+
+      const result = await getEventParticipants(request.user!, eventId, query);
+      return reply.code(200).send(result);
+    }
+  );
+
+  // 13. GET /events/:eventId/participants/export (CSV & XLSX with UTF-8 BOM, formula defense, audit log)
+  server.get(
+    '/events/:eventId/participants/export',
+    { preHandler: [requireAuth] },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { eventId } = request.params as { eventId: string };
+      const query = request.query as {
+        format?: 'csv' | 'xlsx';
+        status?: 'registered' | 'attended' | 'no_show' | 'all';
+        q?: string;
+        department?: string;
+        year?: number | string;
+      };
+
+      const exportResult = await exportEventParticipants(request.user!, eventId, query);
+      return reply
+        .header('Content-Type', exportResult.contentType)
+        .header('Content-Disposition', `attachment; filename="${exportResult.filename}"`)
+        .code(200)
+        .send(exportResult.content);
     }
   );
 }
