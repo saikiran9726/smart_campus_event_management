@@ -301,6 +301,52 @@ export const PassportPage: React.FC = () => {
   const upcomingTickets = allTickets.filter((t) => !t.isAttended && t.status !== 'REVOKED');
   const attendedTickets = allTickets.filter((t) => t.isAttended);
 
+  // Registrations that are not shown as entry passes (waitlisted, awaiting payment, cancelled,
+  // or a revoked ticket). Listed separately so a student can always see why a pass is missing.
+  const otherRegistrations = React.useMemo(() => {
+    const out: Array<{
+      id: string;
+      eventTitle: string;
+      eventPath: string;
+      label: string;
+      hint: string;
+      tone: 'neutral' | 'danger';
+    }> = [];
+    for (const row of registrations) {
+      const ticketStatus = row.ticket?.status as string | undefined;
+      const revoked = ticketStatus === 'REVOKED' || ticketStatus === 'VOID';
+      let label = '';
+      let hint = '';
+      let tone: 'neutral' | 'danger' = 'neutral';
+      if (row.registration.status === 'CANCELLED') {
+        label = 'Cancelled';
+        hint = 'This registration was cancelled.';
+        tone = 'danger';
+      } else if (row.registration.status === 'WAITLISTED') {
+        label = 'Waitlisted';
+        hint = 'The event was full. You will get an entry pass if a seat opens up.';
+      } else if (row.registration.paymentStatus === 'PENDING') {
+        label = 'Payment pending';
+        hint = 'Complete payment to receive your entry pass.';
+      } else if (revoked) {
+        label = 'Ticket revoked';
+        hint = 'Please contact the event organizer about this ticket.';
+        tone = 'danger';
+      } else {
+        continue;
+      }
+      out.push({
+        id: row.registration.id,
+        eventTitle: row.event.title,
+        eventPath: `/events/${row.event.slug || row.event.id}`,
+        label,
+        hint,
+        tone,
+      });
+    }
+    return out;
+  }, [registrations]);
+
   const handleCancelTicket = async () => {
     if (!ticketToCancel) return;
     try {
@@ -580,6 +626,29 @@ export const PassportPage: React.FC = () => {
                   ) : null}
                 </div>
               ))
+            )}
+
+            {!isLoading && otherRegistrations.length > 0 && (
+              <div className="space-y-3 pt-2" data-testid="passport-other-registrations">
+                <h3 className="text-sm font-bold text-foreground">Other registrations</h3>
+                <p className="text-xs text-muted-foreground">
+                  These registrations do not have an active entry pass yet.
+                </p>
+                {otherRegistrations.map((r) => (
+                  <Card key={r.id} className="p-4 flex items-center justify-between gap-3">
+                    <div className="space-y-1 min-w-0">
+                      <Link
+                        to={r.eventPath}
+                        className="font-semibold text-sm text-foreground hover:underline line-clamp-1"
+                      >
+                        {r.eventTitle}
+                      </Link>
+                      <p className="text-xs text-muted-foreground">{r.hint}</p>
+                    </div>
+                    <Badge variant={r.tone}>{r.label}</Badge>
+                  </Card>
+                ))}
+              </div>
             )}
           </TabsContent>
 

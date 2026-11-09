@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, lte, sql } from 'drizzle-orm';
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { DEFAULT_PROJECT_SUBMISSION_CONFIG, EventStatus, ProjectSubmissionConfig, UserRole } from '@eventora/shared';
 import { db } from '../../db/client';
@@ -304,6 +304,7 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
   server.get('/events', async (request: FastifyRequest, reply: FastifyReply) => {
     const query = request.query as {
       q?: string;
+      search?: string;
       category?: string;
       from?: string;
       to?: string;
@@ -312,11 +313,21 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
     };
 
     const limit = Math.min(parseInt(query.limit || '20', 10), 100);
-    const conditions = [];
+
+    // Public discovery only lists events students can actually act on:
+    // published/live, and not yet finished. Drafts, cancelled and ended events are hidden
+    // (they remain reachable by direct link and via the organizer/passport views).
+    const conditions = [
+      inArray(events.status, [EventStatus.PUBLISHED, EventStatus.LIVE]),
+      gt(events.endAt, new Date()),
+    ];
+
+    // The Discover page sends `search`; `q` is kept for existing callers.
+    const searchText = query.q ?? query.search;
 
     // Full-Text Search via PostgreSQL to_tsvector / to_tsquery
-    if (query.q && query.q.trim()) {
-      const cleaned = query.q
+    if (searchText && searchText.trim()) {
+      const cleaned = searchText
         .trim()
         .replace(/[^a-zA-Z0-9 ]/g, '')
         .split(/\s+/)
