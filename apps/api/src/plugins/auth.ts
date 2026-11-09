@@ -6,6 +6,7 @@ import { db } from '../db/client';
 import { User, users } from '../db/schema';
 import { env } from '../env';
 import { AppError } from '../lib/app-error';
+import { syncAndReconcileClerkUser } from '../lib/identity';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -19,7 +20,10 @@ const clerkClient = createClerkClient({ secretKey: env.CLERK_SECRET_KEY });
  * Resolves a User record from Clerk ID, falling back to a bounded single-flight
  * Clerk API lookup if the user has not yet been synced by the webhook.
  */
-async function resolveUserByClerkId(clerkId: string): Promise<User | null> {
+async function resolveUserByClerkId(
+  clerkId: string,
+  logger?: FastifyRequest['log']
+): Promise<User | null> {
   const [existingUser] = await db
     .select()
     .from(users)
@@ -30,18 +34,23 @@ async function resolveUserByClerkId(clerkId: string): Promise<User | null> {
     return existingUser;
   }
 
-  // Bounded lazy-fetch fallback: Call Clerk API once and upsert
+  // Bounded lazy-fetch fallback: Call Clerk API once and reconcile
   try {
     const clerkUser = await clerkClient.users.getUser(clerkId);
     if (!clerkUser) {
+      logger?.warn({ clerkId, reason: 'CLERK_USER_NOT_FOUND' }, 'Clerk user not found in Clerk API');
       return null;
     }
 
-    const primaryEmail =
-      clerkUser.emailAddresses.find((e) => e.id === clerkUser.primaryEmailAddressId)
-        ?.emailAddress ?? clerkUser.emailAddresses[0]?.emailAddress;
+    const primaryEmailObj =
+      clerkUser.emailAddresses.find((e) => e.id === clerkUser.primaryEmailAddressId) ||
+      clerkUser.emailAddresses[0];
+
+    const primaryEmail = primaryEmailObj?.emailAddress;
+    const isEmailVerified = primaryEmailObj?.verification?.status === 'verified';
 
     if (!primaryEmail) {
+      logger?.warn({ clerkId, reason: 'NO_PRIMARY_EMAIL' }, 'Clerk user has no primary email');
       return null;
     }
 
@@ -50,44 +59,32 @@ async function resolveUserByClerkId(clerkId: string): Promise<User | null> {
       primaryEmail.split('@')[0] ||
       'Campus Member';
 
-    // Check optional admin email allowlist
-    let initialRole: UserRole = UserRole.STUDENT;
-    if (env.INITIAL_ADMIN_EMAILS) {
-      const adminEmails = env.INITIAL_ADMIN_EMAILS.split(',').map((e) => e.trim().toLowerCase());
-      if (adminEmails.includes(primaryEmail.toLowerCase())) {
-        initialRole = UserRole.ADMIN;
-      }
-    } else if (env.ADMIN_EMAIL_DOMAIN_ALLOWLIST) {
-      const domains = env.ADMIN_EMAIL_DOMAIN_ALLOWLIST.split(',').map((d) => d.trim());
-      const userDomain = primaryEmail.split('@')[1];
-      if (userDomain && domains.includes(userDomain)) {
-        initialRole = UserRole.ADMIN;
-      }
+    const syncResult = await syncAndReconcileClerkUser({
+      clerkId,
+      email: primaryEmail,
+      isEmailVerified,
+      fullName,
+      avatarUrl: clerkUser.imageUrl ?? null,
+    });
+
+    if (syncResult.user) {
+      logger?.info(
+        { clerkId, reason: syncResult.reason },
+        'Clerk user lazy-resolved and synchronized successfully'
+      );
+      return syncResult.user;
     }
 
-    const [createdUser] = await db
-      .insert(users)
-      .values({
-        clerkId,
-        email: primaryEmail,
-        fullName,
-        avatarUrl: clerkUser.imageUrl ?? null,
-        role: initialRole,
-      })
-      .onConflictDoUpdate({
-        target: users.clerkId,
-        set: {
-          email: primaryEmail,
-          fullName,
-          avatarUrl: clerkUser.imageUrl ?? null,
-          updatedAt: new Date(),
-        },
-      })
-      .returning();
-
-    return createdUser ?? null;
-  } catch (error) {
-    // If Clerk API fails or rate limits, don't crash; return null
+    logger?.warn(
+      { clerkId, reason: syncResult.reason, error: syncResult.error?.message },
+      'Clerk user could not be resolved into database'
+    );
+    return null;
+  } catch (error: any) {
+    logger?.error(
+      { clerkId, reason: 'CLERK_RESOLVE_EXCEPTION', error: error?.message },
+      'Unexpected error resolving Clerk user'
+    );
     return null;
   }
 }
@@ -175,11 +172,13 @@ export async function authenticateRequest(
 
   const authHeader = request.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    request.log?.debug({ reason: 'AUTH_HEADER_MISSING_OR_NOT_BEARER' }, 'Authentication header missing or invalid');
     return null;
   }
 
   const token = authHeader.slice(7).trim();
   if (!token) {
+    request.log?.debug({ reason: 'AUTH_TOKEN_EMPTY' }, 'Authentication bearer token empty');
     return null;
   }
 
@@ -190,6 +189,7 @@ export async function authenticateRequest(
       const payloadJson = Buffer.from(parts[1]!, 'base64url').toString('utf8');
       const parsed = JSON.parse(payloadJson);
       if (parsed && parsed.kind === 'scanner') {
+        request.log?.warn({ reason: 'SCANNER_TOKEN_ON_USER_ENDPOINT' }, 'Scanner token rejected on user endpoint');
         throw new AppError(
           'FORBIDDEN',
           'Scanner tokens are restricted to gate endpoints.',
@@ -209,17 +209,25 @@ export async function authenticateRequest(
     });
 
     if (!verified || !verified.sub) {
+      request.log?.warn({ reason: 'CLERK_TOKEN_VERIFICATION_FAILED' }, 'Clerk verifyToken returned invalid or missing subject');
       return null;
     }
 
-    const user = await resolveUserByClerkId(verified.sub);
+    const user = await resolveUserByClerkId(verified.sub, request.log);
     if (user && !user.deletedAt) {
       request.user = user;
       return user;
     }
 
+    if (user?.deletedAt) {
+      request.log?.warn({ clerkId: verified.sub, reason: 'USER_ACCOUNT_SOFT_DELETED' }, 'User account has been deleted');
+    } else {
+      request.log?.warn({ clerkId: verified.sub, reason: 'USER_LOOKUP_OR_RECONCILIATION_FAILED' }, 'Unable to resolve user from Clerk ID');
+    }
+
     return null;
-  } catch (err) {
+  } catch (err: any) {
+    request.log?.warn({ reason: 'CLERK_TOKEN_VERIFY_EXCEPTION', error: err?.message }, 'Exception during Clerk token verification');
     return null;
   }
 }

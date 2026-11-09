@@ -408,6 +408,13 @@ export async function volunteerRoutes(server: FastifyInstance): Promise<void> {
       let userId: string;
 
       if (currentUser) {
+        if (currentUser.email.toLowerCase() !== invitation.email.toLowerCase()) {
+          throw new AppError(
+            'FORBIDDEN',
+            'This invitation was issued to a different email address.',
+            403
+          );
+        }
         userId = currentUser.id;
       } else {
         let [existingUser] = await db

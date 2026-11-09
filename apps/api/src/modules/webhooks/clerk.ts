@@ -6,10 +6,14 @@ import { db } from '../../db/client';
 import { users, webhookEvents } from '../../db/schema';
 import { env } from '../../env';
 import { AppError } from '../../lib/app-error';
+import { syncAndReconcileClerkUser } from '../../lib/identity';
 
 interface ClerkWebhookEmailAddress {
   id: string;
   email_address: string;
+  verification?: {
+    status?: string | null;
+  } | null;
 }
 
 interface ClerkWebhookUserData {
@@ -91,10 +95,12 @@ export async function clerkWebhookRoutes(server: FastifyInstance): Promise<void>
 
       if (type === 'user.created' || type === 'user.updated') {
         const clerkId = data.id;
-        const primaryEmail =
-          data.email_addresses?.find((e) => e.id === data.primary_email_address_id)
-            ?.email_address ||
-          data.email_addresses?.[0]?.email_address;
+        const primaryEmailObj =
+          data.email_addresses?.find((e) => e.id === data.primary_email_address_id) ||
+          data.email_addresses?.[0];
+
+        const primaryEmail = primaryEmailObj?.email_address;
+        const isEmailVerified = primaryEmailObj?.verification?.status === 'verified';
 
         if (!primaryEmail) {
           return reply.status(200).send({ received: true, warning: 'No email address found' });
@@ -107,39 +113,36 @@ export async function clerkWebhookRoutes(server: FastifyInstance): Promise<void>
 
         const avatarUrl = data.image_url ?? null;
 
-        // Determine default role: never trust role from webhook payload
-        let initialRole: UserRole = UserRole.STUDENT;
-        if (env.INITIAL_ADMIN_EMAILS) {
-          const adminEmails = env.INITIAL_ADMIN_EMAILS.split(',').map((e) => e.trim().toLowerCase());
-          if (adminEmails.includes(primaryEmail.toLowerCase())) {
-            initialRole = UserRole.ADMIN;
-          }
-        } else if (env.ADMIN_EMAIL_DOMAIN_ALLOWLIST) {
-          const domains = env.ADMIN_EMAIL_DOMAIN_ALLOWLIST.split(',').map((d) => d.trim());
-          const userDomain = primaryEmail.split('@')[1];
-          if (userDomain && domains.includes(userDomain)) {
-            initialRole = UserRole.ADMIN;
-          }
-        }
+        const syncResult = await syncAndReconcileClerkUser({
+          clerkId,
+          email: primaryEmail,
+          isEmailVerified,
+          fullName,
+          avatarUrl,
+        });
 
-        await db
-          .insert(users)
-          .values({
-            clerkId,
-            email: primaryEmail,
-            fullName,
-            avatarUrl,
-            role: initialRole,
-          })
-          .onConflictDoUpdate({
-            target: users.clerkId,
-            set: {
-              email: primaryEmail,
-              fullName,
-              avatarUrl,
-              updatedAt: new Date(),
-            },
-          });
+        if (syncResult.reason === 'EMAIL_COLLISION_NON_PLACEHOLDER') {
+          request.log.warn(
+            { clerkId, reason: syncResult.reason },
+            'Clerk webhook email collision with existing non-placeholder account. Skipping sync.'
+          );
+        } else if (syncResult.reason === 'EMAIL_UNVERIFIED_CANNOT_RECONCILE') {
+          request.log.warn(
+            { clerkId, reason: syncResult.reason },
+            'Clerk webhook user email unverified. Skipping placeholder reconciliation.'
+          );
+        } else if (syncResult.reason === 'DATABASE_ERROR') {
+          request.log.error(
+            { clerkId, reason: syncResult.reason, error: syncResult.error?.message },
+            'Database error while synchronizing Clerk user.'
+          );
+          throw syncResult.error || new Error('Database sync failed');
+        } else {
+          request.log.info(
+            { clerkId, reason: syncResult.reason },
+            'Clerk webhook user successfully synchronized.'
+          );
+        }
       } else if (type === 'user.deleted') {
         const clerkId = data.id;
         if (clerkId) {

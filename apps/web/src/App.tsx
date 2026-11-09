@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AppShell } from '@/components/layout/app-shell';
 import { ErrorBoundary } from '@/components/primitives/error-boundary';
 import { Skeleton } from '@/components/ui/skeleton';
-import { RequireAuth, RequireRole } from '@/lib/auth';
+import { RequireAuth, RequireRole, RequireVolunteer } from '@/lib/auth';
 import { ActiveClubProvider } from '@/features/organizer/ActiveClubContext';
 
 // Full Feature Implementations
@@ -85,7 +85,9 @@ export const AppRoutes: React.FC = () => {
             path="/volunteer"
             element={
               <RequireAuth>
-                <VolunteerDashboardPage />
+                <RequireVolunteer>
+                  <VolunteerDashboardPage />
+                </RequireVolunteer>
               </RequireAuth>
             }
           />

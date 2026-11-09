@@ -1,9 +1,9 @@
-import { and, eq, ne } from 'drizzle-orm';
+import { and, count, eq, gt, ne } from 'drizzle-orm';
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { PHONE_REGEX } from '@eventora/shared';
+import { EventStatus, PHONE_REGEX } from '@eventora/shared';
 import { db } from '../../db/client';
-import { clubMembers, clubs, users } from '../../db/schema';
+import { clubMembers, clubs, events, eventVolunteers, users, volunteerInvitations } from '../../db/schema';
 import { AppError } from '../../lib/app-error';
 import { requireAuth } from '../../plugins/auth';
 
@@ -80,6 +80,42 @@ export async function meRoutes(server: FastifyInstance): Promise<void> {
 
       const completeness = computeProfileCompleteness(currentUser);
 
+      const now = new Date();
+
+      // Query active volunteer assignments count (excludes revoked assignments, cancelled events, and ended events)
+      const [activeAssignmentsResult] = await db
+        .select({ total: count() })
+        .from(eventVolunteers)
+        .innerJoin(events, eq(eventVolunteers.eventId, events.id))
+        .where(
+          and(
+            eq(eventVolunteers.userId, currentUser.id),
+            eq(eventVolunteers.status, 'ACTIVE'),
+            ne(events.status, EventStatus.CANCELLED),
+            gt(events.endAt, now)
+          )
+        );
+
+      const activeCount = Number(activeAssignmentsResult?.total || 0);
+      const isVolunteer = activeCount > 0;
+
+      // Query pending unexpired invitations for user's email (excludes expired invites, cancelled events, and ended events)
+      const [pendingInvitesResult] = await db
+        .select({ total: count() })
+        .from(volunteerInvitations)
+        .innerJoin(events, eq(volunteerInvitations.eventId, events.id))
+        .where(
+          and(
+            eq(volunteerInvitations.email, currentUser.email.toLowerCase()),
+            eq(volunteerInvitations.status, 'PENDING'),
+            gt(volunteerInvitations.expiresAt, now),
+            ne(events.status, EventStatus.CANCELLED),
+            gt(events.endAt, now)
+          )
+        );
+
+      const hasPendingInvite = Number(pendingInvitesResult?.total || 0) > 0;
+
       return reply.status(200).send({
         user: {
           id: currentUser.id,
@@ -104,6 +140,11 @@ export async function meRoutes(server: FastifyInstance): Promise<void> {
           profileComplete: completeness.profileComplete,
           missingFields: completeness.missingFields,
           clubs: memberships,
+          volunteer: {
+            isVolunteer,
+            hasPendingInvite,
+            activeCount,
+          },
           createdAt: currentUser.createdAt.toISOString(),
           updatedAt: currentUser.updatedAt.toISOString(),
         },

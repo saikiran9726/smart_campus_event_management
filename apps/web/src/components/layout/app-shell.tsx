@@ -22,6 +22,7 @@ import {
   Search,
   Bell,
   Sparkles,
+  ShieldCheck,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -65,7 +66,29 @@ export const AppShell: React.FC = () => {
     if (typeof window !== 'undefined') {
       const scannerToken = sessionStorage.getItem('eventora_scanner_token');
       if (scannerToken && !isScannerRoute) {
-        navigate('/scanner', { replace: true });
+        let isExpired = false;
+        try {
+          const parts = scannerToken.split('.');
+          if (parts.length === 3 && parts[1]) {
+            const payload = JSON.parse(atob(parts[1]));
+            if (payload.exp && payload.exp * 1000 <= Date.now()) {
+              isExpired = true;
+            }
+          }
+        } catch {
+          isExpired = true;
+        }
+
+        if (isExpired) {
+          sessionStorage.removeItem('eventora_scanner_token');
+          sessionStorage.removeItem('eventora_scanner_event');
+          localStorage.removeItem('eventora_scanner_token');
+          localStorage.removeItem('eventora_scanner_event');
+          localStorage.removeItem('scanner_token');
+          localStorage.removeItem('scanner_session');
+        } else {
+          navigate('/scanner', { replace: true });
+        }
       }
     }
   }, [location.pathname, isScannerRoute, navigate]);
@@ -96,10 +119,16 @@ export const AppShell: React.FC = () => {
     }
   };
 
+  // Volunteer eligibility from backend /me
+  const isVolunteerEligible = Boolean(
+    user?.volunteer?.isVolunteer || user?.volunteer?.hasPendingInvite
+  );
+
   // Role-based navigation items (hidden, not disabled)
   const navItems = [
     { label: 'Discover', path: '/', icon: Compass, show: true },
     { label: 'Passport', path: '/passport', icon: Ticket, show: true },
+    { label: 'Volunteer', path: '/volunteer', icon: ShieldCheck, show: isVolunteerEligible },
     { label: 'Community', path: '/community', icon: MessageSquare, show: true },
     { label: 'Organizer Studio', path: '/organizer', icon: LayoutDashboard, show: isClubOrganizer },
     { label: 'Faculty Dashboard', path: '/faculty/dashboard', icon: GraduationCap, show: isFaculty },
@@ -109,6 +138,7 @@ export const AppShell: React.FC = () => {
   const mobileNavItems = [
     { label: 'Discover', path: '/', icon: Compass, show: true },
     { label: 'Passport', path: '/passport', icon: Ticket, show: true },
+    { label: 'Volunteer', path: '/volunteer', icon: ShieldCheck, show: isVolunteerEligible },
     { label: 'Community', path: '/community', icon: MessageSquare, show: true },
     { label: 'Organizer', path: '/organizer', icon: LayoutDashboard, show: isClubOrganizer },
     { label: 'Faculty', path: '/faculty/dashboard', icon: GraduationCap, show: isFaculty },
@@ -390,6 +420,14 @@ export const AppShell: React.FC = () => {
                       <span>Event Passport</span>
                     </Link>
                   </DropdownMenuItem>
+                  {isVolunteerEligible && (
+                    <DropdownMenuItem asChild>
+                      <Link to="/volunteer" className="flex items-center gap-2 cursor-pointer">
+                        <ShieldCheck className="h-4 w-4 stroke-[1.75]" />
+                        <span>Volunteer Portal</span>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                   {isClubOrganizer && (
                     <DropdownMenuItem asChild>
                       <Link to="/organizer" className="flex items-center gap-2 cursor-pointer">
