@@ -559,4 +559,100 @@ describe('Volunteer Identity Reconciliation & Security Suite', () => {
     const sessionJson = JSON.parse(sessionRes.body);
     expect(sessionJson.error.message).toContain('Active volunteer assignment not found');
   });
+
+  it('8. Admin allowlist enforcements: verified allowlisted -> ADMIN, unverified allowlisted -> STUDENT, non-listed -> STUDENT', async () => {
+    const timestamp = Date.now();
+    (env as any).INITIAL_ADMIN_EMAILS = `admin_allowlist_${timestamp}@campus.edu`;
+
+    // Case 1: Verified allowlisted email -> ADMIN
+    const verifiedAdminResult = await syncAndReconcileClerkUser({
+      clerkId: `clerk_admin_ver_${timestamp}`,
+      email: `admin_allowlist_${timestamp}@campus.edu`,
+      isEmailVerified: true,
+      fullName: 'Verified Allowlisted Admin',
+    });
+    expect(verifiedAdminResult.user).toBeDefined();
+    expect(verifiedAdminResult.user?.role).toBe(UserRole.ADMIN);
+
+    // Case 2: Unverified allowlisted email -> STUDENT
+    const unverifiedAdminResult = await syncAndReconcileClerkUser({
+      clerkId: `clerk_admin_unver_${timestamp}`,
+      email: `admin_allowlist_unverified_${timestamp}@campus.edu`,
+      isEmailVerified: false,
+      fullName: 'Unverified Allowlisted Attempt',
+    });
+    expect(unverifiedAdminResult.user).toBeDefined();
+    expect(unverifiedAdminResult.user?.role).toBe(UserRole.STUDENT);
+
+    // Case 3: Non-allowlisted email -> STUDENT
+    const regularStudentResult = await syncAndReconcileClerkUser({
+      clerkId: `clerk_student_${timestamp}`,
+      email: `regular_student_${timestamp}@campus.edu`,
+      isEmailVerified: true,
+      fullName: 'Regular Student',
+    });
+    expect(regularStudentResult.user).toBeDefined();
+    expect(regularStudentResult.user?.role).toBe(UserRole.STUDENT);
+  });
+
+  it('9. Concurrency test: two parallel activations of same token, exactly one succeeds (200) and one fails (404)', async () => {
+    const timestamp = Date.now();
+    const token = `VOL-CONCUR-${timestamp}`;
+    const inviteEmail = `concur_vol_${timestamp}@campus.edu`.toLowerCase();
+
+    await db.insert(volunteerInvitations).values({
+      email: inviteEmail,
+      fullName: 'Concurrent Invitee',
+      eventId: testEventId,
+      gate: 'Main Gate',
+      role: 'SCANNER',
+      token,
+      status: 'PENDING',
+      expiresAt: new Date(Date.now() + 86400000),
+    });
+
+    const [user1, user2] = await Promise.all([
+      db
+        .insert(users)
+        .values({
+          clerkId: `concur_user1_${timestamp}`,
+          email: inviteEmail,
+          fullName: 'Concurrent Invitee Device 1',
+          role: UserRole.STUDENT,
+        })
+        .returning(),
+      db
+        .insert(users)
+        .values({
+          clerkId: `concur_user2_${timestamp}`,
+          email: `concur_other_${timestamp}@campus.edu`,
+          fullName: 'Concurrent Invitee Device 2',
+          role: UserRole.STUDENT,
+        })
+        .returning(),
+    ]);
+
+    // Fire two activations in parallel for the exact same token
+    const [res1, res2] = await Promise.all([
+      server.inject({
+        method: 'POST',
+        url: '/volunteers/activate',
+        headers: { 'x-test-user-id': user1[0]!.id },
+        payload: { token },
+      }),
+      server.inject({
+        method: 'POST',
+        url: '/volunteers/activate',
+        headers: { 'x-test-user-id': user1[0]!.id },
+        payload: { token },
+      }),
+    ]);
+
+    const statuses = [res1.statusCode, res2.statusCode].sort();
+    expect(statuses).toEqual([200, 404]);
+
+    // Verify token status in DB is now ACCEPTED
+    const [tokenInDb] = await db.select().from(volunteerInvitations).where(eq(volunteerInvitations.token, token));
+    expect(tokenInDb!.status).toBe('ACCEPTED');
+  });
 });

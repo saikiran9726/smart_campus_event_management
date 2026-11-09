@@ -32,7 +32,13 @@
   - Configured PostgreSQL SSL settings to support cloud certificate chains (`rejectUnauthorized: false` default with override).
   - Added migration idempotency verification step on fresh empty database to `.github/workflows/ci.yml`.
   - Audited web routes and socket events via `scripts/route-audit.mjs` (115 endpoints, 0 mismatches).
-- [ ] **Phase 2: Security Fixes & Enforcements**
+- [x] **Phase 2: Security Fixes & Enforcements** (Completed)
+  - Admin allowlist: Updated `determineInitialRole` in `apps/api/src/lib/identity.ts` to require `isEmailVerified === true` before granting `ADMIN`. Verified allowlisted emails receive `ADMIN`; unverified allowlisted emails receive `STUDENT`; non-listed emails receive `STUDENT`.
+  - Atomic single-use invitation activation: Implemented single-transaction `UPDATE ... WHERE token=? AND status='PENDING' AND expires_at > now() RETURNING` with concurrent assignment insert. Verified via concurrency test that two parallel activations result in exactly one 200 and one 404.
+  - Test-bypass security guard: Added `assertSafeAuthConfig()` to fail startup if test bypass is enabled in production-like environments (`sk_live_` or non-localhost `DATABASE_URL`). Confined `x-test-user-id` to `isTestAuthBypassEnabled()`. Used `!import.meta.env.PROD` in frontend for dead-code elimination.
+  - Scanner tokens stored exclusively in `sessionStorage`; eliminated all `localStorage` writes and reads of scanner tokens/sessions across the frontend. Scoped scanner JWT with `kind: 'scanner'`, `assignmentId`, `eventId`, and short-lived 4-hour expiry.
+  - Fastify log redaction: Added `req.body.email`, `*.email`, `*.token`, `req.headers.authorization` redaction; verified all 14 log call sites contain zero raw emails or tokens.
+  - Route-level rate limiting: Applied `@fastify/rate-limit` to `/volunteers/activate`, `/me/volunteer-assignments/:id/scanner-session`, and `/me`.
 - [ ] **Phase 3: E2E Playwright Automation**
 - [ ] **Phase 4: Dry-Run Reconcile Script**
 - [ ] **Phase 5: Production Hardening**

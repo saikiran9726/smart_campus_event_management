@@ -69,13 +69,14 @@ export const ClerkAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const { getToken, signOut: clerkSignOut } = useClerkAuth();
 
   const [testUserId, setTestUserId] = React.useState<string | null>(() => {
-    if (typeof window !== 'undefined') {
+    if (!import.meta.env.PROD && typeof window !== 'undefined') {
       return sessionStorage.getItem('eventora_test_user_id') || localStorage.getItem('eventora_test_user_id');
     }
     return null;
   });
 
   useEffect(() => {
+    if (import.meta.env.PROD) return;
     const checkStorage = () => {
       const current =
         sessionStorage.getItem('eventora_test_user_id') || localStorage.getItem('eventora_test_user_id');
@@ -195,13 +196,14 @@ export const ClerkAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
 export const MockAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [testUserId, setTestUserId] = React.useState<string | null>(() => {
-    if (typeof window !== 'undefined') {
+    if (!import.meta.env.PROD && typeof window !== 'undefined') {
       return sessionStorage.getItem('eventora_test_user_id') || localStorage.getItem('eventora_test_user_id');
     }
     return null;
   });
 
   useEffect(() => {
+    if (import.meta.env.PROD) return;
     const checkStorage = () => {
       const current =
         sessionStorage.getItem('eventora_test_user_id') || localStorage.getItem('eventora_test_user_id');

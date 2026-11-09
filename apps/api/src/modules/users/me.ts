@@ -5,6 +5,7 @@ import { EventStatus, PHONE_REGEX } from '@eventora/shared';
 import { db } from '../../db/client';
 import { clubMembers, clubs, events, eventVolunteers, users, volunteerInvitations } from '../../db/schema';
 import { AppError } from '../../lib/app-error';
+import { env } from '../../env';
 import { requireAuth } from '../../plugins/auth';
 
 export function computeProfileCompleteness(user: {
@@ -64,7 +65,15 @@ const updateMeSchema = z.object({
 export async function meRoutes(server: FastifyInstance): Promise<void> {
   server.get(
     '/me',
-    { preHandler: [requireAuth] },
+    {
+      preHandler: [requireAuth],
+      config: {
+        rateLimit: {
+          max: env.NODE_ENV === 'test' ? 5000 : 60,
+          timeWindow: '1 minute',
+        },
+      },
+    },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const currentUser = request.user!;
 

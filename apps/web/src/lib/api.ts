@@ -153,9 +153,9 @@ export async function apiFetch<T = unknown>(
     const isScannerEndpoint = endpoint.includes('/scanner') || endpoint.includes('/gate');
     if (!token && isScannerEndpoint) {
       const scannerToken =
-        sessionStorage.getItem('eventora_scanner_token') ||
-        localStorage.getItem('eventora_scanner_token') ||
-        localStorage.getItem('scanner_token');
+        sessionStorage.getItem('eventora_scanner_token');
+
+
       if (scannerToken) {
         token = scannerToken;
       }
@@ -167,7 +167,7 @@ export async function apiFetch<T = unknown>(
     : `${env.VITE_API_URL}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
 
   const headers = new Headers(customHeaders);
-  const isDevOrTest = env.DEV || env.MODE === 'development' || env.MODE === 'test';
+  const isDevOrTest = !import.meta.env.PROD && (env.DEV || env.MODE === 'development' || env.MODE === 'test');
   const testUserId =
     isDevOrTest && typeof window !== 'undefined'
       ? sessionStorage.getItem('eventora_test_user_id') || localStorage.getItem('eventora_test_user_id')

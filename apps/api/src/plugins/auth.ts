@@ -7,6 +7,7 @@ import { User, users } from '../db/schema';
 import { env } from '../env';
 import { AppError } from '../lib/app-error';
 import { syncAndReconcileClerkUser } from '../lib/identity';
+import { isTestAuthBypassEnabled } from '../lib/test-auth-guard';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -95,8 +96,8 @@ async function resolveUserByClerkId(
 export async function authenticateRequest(
   request: FastifyRequest
 ): Promise<User | null> {
-  // Test/Development header bypass: active in test and dev, never in production
-  if (env.NODE_ENV === 'test' || env.NODE_ENV === 'development') {
+  // Test/Development header bypass: active in test, or in dev with ALLOW_TEST_AUTH_BYPASS === 'true'
+  if (isTestAuthBypassEnabled()) {
     const testUserId = request.headers['x-test-user-id'];
     if (typeof testUserId === 'string' && testUserId.trim().length > 0) {
       const cleanId = testUserId.trim();

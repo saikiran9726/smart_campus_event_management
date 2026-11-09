@@ -115,15 +115,9 @@ export const VolunteerDashboardPage: React.FC = () => {
         role: res.role,
       });
 
-      // Set canonical scanner session in both sessionStorage and localStorage
+      // Set canonical scanner session in sessionStorage only
       sessionStorage.setItem('eventora_scanner_token', res.token);
       sessionStorage.setItem('eventora_scanner_event', sessionData);
-      localStorage.setItem('eventora_scanner_token', res.token);
-      localStorage.setItem('eventora_scanner_event', sessionData);
-
-      // Preserve legacy keys for backward test compatibility
-      localStorage.setItem('scanner_token', res.token);
-      localStorage.setItem('scanner_session', sessionData);
 
       toast.success(`Scanner session initialized for ${res.gate}!`);
       navigate('/scanner');

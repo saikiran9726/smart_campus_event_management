@@ -19,6 +19,7 @@ import { db } from './db/client';
 import { registrations } from './db/schema';
 import { runOfferExpirySweepOnce } from './workers/offer-expiry.worker';
 import { AppError } from './lib/app-error';
+import { assertSafeAuthConfig } from './lib/test-auth-guard';
 import { meRoutes } from './modules/users/me';
 import { clerkWebhookRoutes } from './modules/webhooks/clerk';
 import { whatsappWebhookRoutes } from './modules/webhooks/whatsapp';
@@ -68,9 +69,12 @@ const redactionPaths = [
   '*.token',
   '*.code',
   '*.passkey',
+  'req.body.email',
+  '*.email',
 ];
 
 export function buildServer(opts: FastifyServerOptions = {}): FastifyInstance {
+  assertSafeAuthConfig();
   const defaultLogger =
     env.NODE_ENV === 'test'
       ? false

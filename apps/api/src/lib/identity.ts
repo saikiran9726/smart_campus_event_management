@@ -26,7 +26,11 @@ export interface SyncClerkUserResult {
   error?: Error;
 }
 
-export function determineInitialRole(email: string): UserRole {
+export function determineInitialRole(email: string, isEmailVerified: boolean): UserRole {
+  // ADMIN role may be granted ONLY when the Clerk email is verified
+  if (!isEmailVerified) {
+    return UserRole.STUDENT;
+  }
   let initialRole: UserRole = UserRole.STUDENT;
   const normalized = email.toLowerCase().trim();
   if (env.INITIAL_ADMIN_EMAILS) {
@@ -110,7 +114,7 @@ export async function syncAndReconcileClerkUser(
       }
 
       // Reconcile placeholder: update clerkId to the real Clerk ID
-      const initialRole = determineInitialRole(normalizedEmail);
+      const initialRole = determineInitialRole(normalizedEmail, input.isEmailVerified);
       const roleToSet =
         initialRole === UserRole.ADMIN ? UserRole.ADMIN : existingByEmail.role;
 
@@ -133,7 +137,7 @@ export async function syncAndReconcileClerkUser(
     }
 
     // 3. Brand new user: insert
-    const initialRole = determineInitialRole(normalizedEmail);
+    const initialRole = determineInitialRole(normalizedEmail, input.isEmailVerified);
     const [newUser] = await tx
       .insert(users)
       .values({
