@@ -49,8 +49,26 @@
   - Verified real test execution on both projects:
     - `pnpm exec playwright test e2e/volunteer-passkey.spec.ts --project="chromium"`: **1 passed (13.4s)**.
     - `pnpm exec playwright test e2e/volunteer-passkey.spec.ts --project="Pixel 5"`: **1 passed (12.0s)**.
-- [ ] **Phase 4: Dry-Run Reconcile Script**
-- [ ] **Phase 4: Dry-Run Reconcile Script**
+- [x] **Phase 4: Dry-Run Reconcile Script** (Completed)
+  - Updated `scripts/reconcile-volunteer-placeholders.ts` with `maskEmail(email)` to guarantee zero full email addresses are output (formatted as `a***@domain.com`).
+  - Added safety lock requiring `--apply --confirm` to prevent accidental database writes.
+  - Wrapped all reconciliation updates inside a single atomic PostgreSQL transaction (`await db.transaction(...)`) to guarantee all-or-nothing execution with transaction rollback on error.
+  - Executed dry-run simulation against local database:
+    - 8 placeholder accounts inspected (`volunteer_%`).
+    - 8 unlinked users skipped (not yet signed up with Clerk).
+    - 0 unverified in Clerk, 0 errors.
+    - Zero modifications made to database.
+- [ ] **Phase 5: Production Hardening**
+- [x] **Phase 4: Dry-Run Reconcile Script** (Completed)
+  - Updated `scripts/reconcile-volunteer-placeholders.ts` with `maskEmail(email)` to guarantee zero full email addresses are output (formatted as `a***@domain.com`).
+  - Added safety lock requiring `--apply --confirm` to prevent accidental database writes.
+  - Wrapped all reconciliation updates inside a single atomic PostgreSQL transaction (`await db.transaction(...)`) to guarantee all-or-nothing execution with transaction rollback on error.
+  - Executed dry-run simulation against local database:
+    - 8 placeholder accounts inspected (`volunteer_%`).
+    - 8 unlinked users skipped (not yet signed up with Clerk).
+    - 0 unverified in Clerk, 0 errors.
+    - Zero modifications made to database.
+- [ ] **Phase 5: Production Hardening**
 - [ ] **Phase 5: Production Hardening**
 - [ ] **Phase 6: CI/CD Pipeline**
 - [ ] **Phase 7: Final Gate & Release Approval**

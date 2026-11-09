@@ -6,6 +6,7 @@
     "build:shared": "pnpm --filter @eventora/shared build",
     "build": "pnpm build:shared && pnpm -r run build",
     "route-audit": "node scripts/route-audit.mjs",
+    "reconcile:placeholders": "pnpm --filter @eventora/api exec tsx ../../scripts/reconcile-volunteer-placeholders.ts",
     "dev:users": "pnpm --filter @eventora/api exec tsx ../../scripts/create-dev-users.ts",
     "test": "pnpm build:shared && pnpm -r run test",
     "lint": "pnpm build:shared && pnpm -r run lint",

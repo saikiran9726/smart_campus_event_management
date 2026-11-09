@@ -18,13 +18,36 @@ import { users } from '../apps/api/src/db/schema';
 
 const clerk = createClerkClient({ secretKey: clerkSecretKey });
 
+function maskEmail(email: string): string {
+  if (!email || !email.includes('@')) return '***';
+  return email.replace(/^(.)(.*)(@.*)$/, (_, first, _rest, domain) => `${first}***${domain}`);
+}
+
+interface ReconcileAction {
+  placeholderId: string;
+  maskedEmail: string;
+  oldClerkId: string;
+  newClerkId: string;
+  fullName: string;
+  avatarUrl: string | null;
+}
+
 async function main() {
   const isApply = process.argv.includes('--apply');
+  const isConfirmed = process.argv.includes('--confirm');
 
   console.log('====================================================');
   console.log('  EVENTORA: Volunteer Placeholder Reconciliation Tool');
-  console.log(`  Execution Mode: ${isApply ? 'APPLY (Modifications WILL be written to DB)' : 'DRY-RUN (Read-only simulation)'}`);
+  console.log(`  Execution Mode: ${isApply ? 'APPLY (Modifications will be written to DB)' : 'DRY-RUN (Read-only simulation)'}`);
   console.log('====================================================\n');
+
+  if (isApply && !isConfirmed) {
+    console.error('SAFETY BLOCK: Applying modifications requires explicit confirmation.');
+    console.error('Please verify that a fresh database backup/snapshot exists, then run with:');
+    console.error('  pnpm reconcile:placeholders --apply --confirm\n');
+    await pool.end();
+    process.exit(1);
+  }
 
   // Find all placeholder accounts created for volunteer invites
   const placeholders = await db
@@ -47,13 +70,14 @@ async function main() {
     return;
   }
 
-  let reconciledCount = 0;
+  const actionsToApply: ReconcileAction[] = [];
   let unverifiedCount = 0;
   let notFoundInClerkCount = 0;
   let errorCount = 0;
 
   for (const placeholder of placeholders) {
     const normalizedEmail = placeholder.email.trim().toLowerCase();
+    const masked = maskEmail(normalizedEmail);
 
     try {
       // Query Clerk API for users with matching email
@@ -63,7 +87,7 @@ async function main() {
       });
 
       if (!clerkUsers.data || clerkUsers.data.length === 0) {
-        console.log(`[SKIP - NOT REGISTERED] User ${placeholder.id} (${normalizedEmail}) has not created a Clerk account yet.`);
+        console.log(`[SKIP - NOT REGISTERED] User ${placeholder.id} (${masked}) has not created a Clerk account yet.`);
         notFoundInClerkCount++;
         continue;
       }
@@ -76,48 +100,70 @@ async function main() {
       const isVerified = primaryEmailObj?.verification?.status === 'verified';
 
       if (!isVerified) {
-        console.log(`[SKIP - UNVERIFIED] User ${placeholder.id} (${normalizedEmail}) exists in Clerk (${matchingClerkUser.id}), but email is NOT verified.`);
+        console.log(`[SKIP - UNVERIFIED] User ${placeholder.id} (${masked}) exists in Clerk, but email is NOT verified.`);
         unverifiedCount++;
         continue;
       }
 
       const realClerkId = matchingClerkUser.id;
+      const resolvedName =
+        placeholder.fullName ||
+        [matchingClerkUser.firstName, matchingClerkUser.lastName].filter(Boolean).join(' ') ||
+        'Campus Member';
 
-      if (isApply) {
-        await db
-          .update(users)
-          .set({
-            clerkId: realClerkId,
-            fullName: placeholder.fullName || [matchingClerkUser.firstName, matchingClerkUser.lastName].filter(Boolean).join(' ') || 'Campus Member',
-            avatarUrl: matchingClerkUser.imageUrl ?? null,
-            updatedAt: new Date(),
-          })
-          .where(eq(users.id, placeholder.id));
+      actionsToApply.push({
+        placeholderId: placeholder.id,
+        maskedEmail: masked,
+        oldClerkId: placeholder.clerkId,
+        newClerkId: realClerkId,
+        fullName: resolvedName,
+        avatarUrl: matchingClerkUser.imageUrl ?? null,
+      });
 
-        console.log(`[APPLIED] Successfully reconciled user ${placeholder.id} (${normalizedEmail}): ${placeholder.clerkId} -> ${realClerkId}`);
-      } else {
-        console.log(`[DRY-RUN WOULD RECONCILE] User ${placeholder.id} (${normalizedEmail}): would update ${placeholder.clerkId} -> ${realClerkId}`);
+      if (!isApply) {
+        console.log(`[DRY-RUN WOULD RECONCILE] User ${placeholder.id} (${masked}): would update ${placeholder.clerkId} -> ${realClerkId}`);
       }
-
-      reconciledCount++;
     } catch (err: any) {
-      console.error(`[ERROR] Failed to inspect user ${placeholder.id} (${normalizedEmail}):`, err?.message || err);
+      console.error(`[ERROR] Failed to inspect user ${placeholder.id} (${masked}):`, err?.message || err);
       errorCount++;
     }
   }
 
+  // Execute inside a single atomic database transaction if --apply
+  let appliedCount = 0;
+  if (isApply && actionsToApply.length > 0) {
+    console.log(`\nExecuting ${actionsToApply.length} reconciliation updates inside a single database transaction...`);
+    await db.transaction(async (tx) => {
+      for (const action of actionsToApply) {
+        await tx
+          .update(users)
+          .set({
+            clerkId: action.newClerkId,
+            fullName: action.fullName,
+            avatarUrl: action.avatarUrl,
+            updatedAt: new Date(),
+          })
+          .where(eq(users.id, action.placeholderId));
+
+        console.log(`[APPLIED] Successfully reconciled user ${action.placeholderId} (${action.maskedEmail}): ${action.oldClerkId} -> ${action.newClerkId}`);
+        appliedCount++;
+      }
+    });
+    console.log(`Transaction successfully committed. Reconciled ${appliedCount} accounts.`);
+  }
+
   console.log('\n----------------- SUMMARY -----------------');
-  console.log(`Total Placeholders Inspected: ${placeholders.length}`);
-  console.log(`Ready to Reconcile / Reconciled: ${reconciledCount}`);
-  console.log(`Skipped (Unverified in Clerk):   ${unverifiedCount}`);
-  console.log(`Skipped (Not in Clerk yet):       ${notFoundInClerkCount}`);
-  console.log(`Errors:                          ${errorCount}`);
+  console.log(`Total Placeholders Inspected:   ${placeholders.length}`);
+  console.log(`Ready to Reconcile / Reconciled: ${isApply ? appliedCount : actionsToApply.length}`);
+  console.log(`Skipped (Unverified in Clerk):     ${unverifiedCount}`);
+  console.log(`Skipped (Not in Clerk yet):         ${notFoundInClerkCount}`);
+  console.log(`Errors:                            ${errorCount}`);
   console.log('-------------------------------------------');
 
   if (!isApply) {
     console.log('\nNOTICE: This was a DRY-RUN. No changes were made to the database.');
-    console.log('To apply these changes, rerun with the --apply flag:');
-    console.log('  pnpm exec tsx scripts/reconcile-volunteer-placeholders.ts --apply\n');
+    console.log('To apply these changes after verifying database backup/snapshot, run:');
+    console.log('  pnpm reconcile:placeholders --apply --confirm\n');
   }
 
   await pool.end();
