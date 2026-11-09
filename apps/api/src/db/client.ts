@@ -10,7 +10,7 @@ const connectionString =
 
 const ssl =
   env.DATABASE_SSL || process.env.DATABASE_SSL === 'true'
-    ? { rejectUnauthorized: true }
+    ? { rejectUnauthorized: process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === 'true' }
     : undefined;
 
 const max = env.DATABASE_POOL_MAX || Number(process.env.DATABASE_POOL_MAX) || 10;

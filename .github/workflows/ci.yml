@@ -94,6 +94,13 @@ jobs:
       - name: Run Database Migrations
         run: pnpm --filter api db:migrate
 
+      - name: Verify Migration Idempotency on Clean Database
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -c "DROP DATABASE IF EXISTS eventora_empty_ci; CREATE DATABASE eventora_empty_ci;"
+          DATABASE_URL="postgres://postgres:postgres@localhost:5432/eventora_empty_ci" pnpm --filter api db:migrate
+          DATABASE_URL="postgres://postgres:postgres@localhost:5432/eventora_empty_ci" pnpm --filter api db:migrate
+          PGPASSWORD=postgres psql -h localhost -U postgres -c "DROP DATABASE eventora_empty_ci;"
+
       - name: Seed Database
         run: pnpm --filter api db:seed
 
@@ -102,10 +109,10 @@ jobs:
           ! git grep -InE "TODO|FIXME|not implemented|rest of implementation" -- apps packages scripts e2e && echo "NO PLACEHOLDERS FOUND"
 
       - name: Workspace Typecheck
-        run: pnpm -r typecheck
+        run: pnpm typecheck
 
       - name: Workspace Lint
-        run: pnpm -r lint
+        run: pnpm lint
 
       - name: Workspace Build
         run: pnpm -r build

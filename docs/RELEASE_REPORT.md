@@ -26,7 +26,12 @@
 ## Phase Tracking & Execution Log
 
 - [x] **Phase 0: Baseline Verification** (Completed)
-- [ ] **Phase 1: CI Breakages & Migrations**
+- [x] **Phase 1: CI Breakages & Migrations** (Completed)
+  - Enforced shared package build order in CI and workspace commands (`pnpm build:shared` before `typecheck`/`lint`).
+  - Added standalone `scripts/migrate.mjs` runner to execute compiled migrations in production with zero `devDependencies`.
+  - Configured PostgreSQL SSL settings to support cloud certificate chains (`rejectUnauthorized: false` default with override).
+  - Added migration idempotency verification step on fresh empty database to `.github/workflows/ci.yml`.
+  - Audited web routes and socket events via `scripts/route-audit.mjs` (115 endpoints, 0 mismatches).
 - [ ] **Phase 2: Security Fixes & Enforcements**
 - [ ] **Phase 3: E2E Playwright Automation**
 - [ ] **Phase 4: Dry-Run Reconcile Script**
