@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/lib/auth';
 import {
   QrCode,
   ShieldCheck,
@@ -43,8 +44,17 @@ interface VolunteerAssignment {
 
 export const VolunteerDashboardPage: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const codeFromUrl = searchParams.get('code') || searchParams.get('token') || '';
   const queryClient = useQueryClient();
-  const [activationToken, setActivationToken] = useState('');
+  const { isLoaded, isSignedIn, refetchUser } = useAuth();
+  const [activationToken, setActivationToken] = useState(codeFromUrl);
+
+  useEffect(() => {
+    if (codeFromUrl) {
+      setActivationToken(codeFromUrl);
+    }
+  }, [codeFromUrl]);
 
   // 1. Fetch user's assigned volunteer duties
   const {
@@ -56,6 +66,7 @@ export const VolunteerDashboardPage: React.FC = () => {
     queryFn: async () => {
       return await api.get<{ assignments: VolunteerAssignment[] }>('/me/volunteer-assignments');
     },
+    enabled: isLoaded && isSignedIn,
   });
 
   // 2. Activate Invitation Code Mutation
@@ -69,6 +80,8 @@ export const VolunteerDashboardPage: React.FC = () => {
       toast.success(`Volunteer access activated for ${res.event?.title || 'event'}!`);
       setActivationToken('');
       refetch();
+      refetchUser();
+      queryClient.invalidateQueries({ queryKey: ['me'] });
     },
     onError: (err: any) => {
       toast.error(err?.message || 'Failed to activate invitation code.');
@@ -102,15 +115,9 @@ export const VolunteerDashboardPage: React.FC = () => {
         role: res.role,
       });
 
-      // Set canonical scanner session in both sessionStorage and localStorage
+      // Set canonical scanner session in sessionStorage only
       sessionStorage.setItem('eventora_scanner_token', res.token);
       sessionStorage.setItem('eventora_scanner_event', sessionData);
-      localStorage.setItem('eventora_scanner_token', res.token);
-      localStorage.setItem('eventora_scanner_event', sessionData);
-
-      // Preserve legacy keys for backward test compatibility
-      localStorage.setItem('scanner_token', res.token);
-      localStorage.setItem('scanner_session', sessionData);
 
       toast.success(`Scanner session initialized for ${res.gate}!`);
       navigate('/scanner');

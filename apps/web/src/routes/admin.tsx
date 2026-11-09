@@ -366,6 +366,7 @@ export const AdminPage: React.FC = () => {
   const [newVolNotes, setNewVolNotes] = useState('');
   const [createdVolunteerToken, setCreatedVolunteerToken] = useState<string | null>(null);
   const [hasCopiedVolToken, setHasCopiedVolToken] = useState(false);
+  const [hasCopiedVolUrl, setHasCopiedVolUrl] = useState(false);
 
   const {
     data: volunteerData,
@@ -1281,24 +1282,40 @@ export const AdminPage: React.FC = () => {
                       Volunteer Assigned Successfully!
                     </h3>
                     <p className="text-xs text-muted-foreground">
-                      Share this activation code with the student to unlock scanning:
+                      Share this activation code or direct link with the student to unlock scanning:
                     </p>
                     <div className="p-3 bg-background border rounded-lg font-mono font-extrabold text-xl text-emerald-600 dark:text-emerald-400 tracking-wider">
                       {createdVolunteerToken}
                     </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={async () => {
-                        await copyToClipboard(createdVolunteerToken);
-                        setHasCopiedVolToken(true);
-                        setTimeout(() => setHasCopiedVolToken(false), 2000);
-                      }}
-                      className="gap-1.5 w-full text-xs"
-                    >
-                      {hasCopiedVolToken ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
-                      {hasCopiedVolToken ? 'Copied to Clipboard' : 'Copy Activation Code'}
-                    </Button>
+                    <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          await copyToClipboard(createdVolunteerToken);
+                          setHasCopiedVolToken(true);
+                          setTimeout(() => setHasCopiedVolToken(false), 2000);
+                        }}
+                        className="gap-1.5 flex-1 text-xs"
+                      >
+                        {hasCopiedVolToken ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                        {hasCopiedVolToken ? 'Copied Code' : 'Copy Code'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={async () => {
+                          const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/volunteer?code=${createdVolunteerToken}`;
+                          await copyToClipboard(url);
+                          setHasCopiedVolUrl(true);
+                          setTimeout(() => setHasCopiedVolUrl(false), 2000);
+                        }}
+                        className="gap-1.5 flex-1 text-xs"
+                      >
+                        {hasCopiedVolUrl ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                        {hasCopiedVolUrl ? 'Copied Link' : 'Copy Activation Link'}
+                      </Button>
+                    </div>
                   </div>
                 </div>
               ) : (

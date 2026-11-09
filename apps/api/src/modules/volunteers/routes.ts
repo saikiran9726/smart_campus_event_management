@@ -1,10 +1,10 @@
 import crypto from 'node:crypto';
-import { and, count, desc, eq, ilike, or, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gt, ilike, or, sql } from 'drizzle-orm';
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { SignJWT } from 'jose';
 import { z } from 'zod';
 import { TicketStatus, UserRole } from '@eventora/shared';
-import { db } from '../../db/client';
+import { db, withTx } from '../../db/client';
 import {
   events,
   eventVolunteers,
@@ -375,126 +375,146 @@ export async function volunteerRoutes(server: FastifyInstance): Promise<void> {
     '/volunteers/activate',
     {
       schema: { body: activateVolunteerBodySchema },
+      config: {
+        rateLimit: {
+          max: env.NODE_ENV === 'test' ? 1000 : 10,
+          timeWindow: '1 minute',
+        },
+      },
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { token, fullName, rollNumber } =
         request.body as z.infer<typeof activateVolunteerBodySchema>;
 
-      const [invitation] = await db
-        .select()
-        .from(volunteerInvitations)
-        .where(
-          and(
-            eq(volunteerInvitations.token, token.trim()),
-            eq(volunteerInvitations.status, 'PENDING')
-          )
-        )
-        .limit(1);
-
-      if (!invitation) {
-        throw new AppError('NOT_FOUND', 'Invalid or already activated invitation token.', 404);
-      }
-
-      if (new Date() > invitation.expiresAt) {
-        await db
-          .update(volunteerInvitations)
-          .set({ status: 'EXPIRED' })
-          .where(eq(volunteerInvitations.id, invitation.id));
-        throw new AppError('OFFER_EXPIRED', 'This volunteer invitation token has expired.', 410);
-      }
-
-      // Check current authed user or resolve by email
+      // Authenticate current user if Bearer header present
       const currentUser = await authenticateRequest(request);
-      let userId: string;
 
-      if (currentUser) {
-        userId = currentUser.id;
-      } else {
-        let [existingUser] = await db
+      const result = await withTx(async (tx) => {
+        const now = new Date();
+
+        // 1. Atomically claim invitation: conditional update prevents race conditions
+        const [claimed] = await tx
+          .update(volunteerInvitations)
+          .set({ status: 'ACCEPTED', updatedAt: now })
+          .where(
+            and(
+              eq(volunteerInvitations.token, token.trim()),
+              eq(volunteerInvitations.status, 'PENDING'),
+              gt(volunteerInvitations.expiresAt, now)
+            )
+          )
+          .returning();
+
+        if (!claimed) {
+          // Inspect token to distinguish expired vs invalid
+          const [existing] = await tx
+            .select({ status: volunteerInvitations.status, expiresAt: volunteerInvitations.expiresAt })
+            .from(volunteerInvitations)
+            .where(eq(volunteerInvitations.token, token.trim()))
+            .limit(1);
+
+          if (existing && (existing.status === 'EXPIRED' || existing.expiresAt <= now)) {
+            throw new AppError('OFFER_EXPIRED', 'This volunteer invitation token has expired.', 410);
+          }
+          throw new AppError('NOT_FOUND', 'Invalid or already activated invitation token.', 404);
+        }
+
+        let userId: string;
+        if (currentUser) {
+          if (currentUser.email.toLowerCase() !== claimed.email.toLowerCase()) {
+            throw new AppError(
+              'FORBIDDEN',
+              'This invitation was issued to a different email address.',
+              403
+            );
+          }
+          userId = currentUser.id;
+        } else {
+          let [existingUser] = await tx
+            .select()
+            .from(users)
+            .where(eq(users.email, claimed.email.toLowerCase()))
+            .limit(1);
+
+          if (!existingUser) {
+            const [newUser] = await tx
+              .insert(users)
+              .values({
+                email: claimed.email.toLowerCase(),
+                fullName: fullName || claimed.fullName,
+                rollNumber: rollNumber || null,
+                clerkId: `volunteer_${crypto.randomUUID()}`,
+                role: UserRole.STUDENT,
+              })
+              .returning();
+            existingUser = newUser;
+          }
+          userId = existingUser!.id;
+        }
+
+        // 2. Activate or create eventVolunteers record atomically
+        const [existingVol] = await tx
           .select()
-          .from(users)
-          .where(eq(users.email, invitation.email.toLowerCase()))
+          .from(eventVolunteers)
+          .where(
+            and(
+              eq(eventVolunteers.eventId, claimed.eventId),
+              eq(eventVolunteers.userId, userId)
+            )
+          )
           .limit(1);
 
-        if (!existingUser) {
-          const [newUser] = await db
-            .insert(users)
+        let volunteerRecord;
+        if (existingVol) {
+          const [updated] = await tx
+            .update(eventVolunteers)
+            .set({
+              status: 'ACTIVE',
+              gate: claimed.gate,
+              role: claimed.role,
+              updatedAt: now,
+            })
+            .where(eq(eventVolunteers.id, existingVol.id))
+            .returning();
+          volunteerRecord = updated;
+        } else {
+          const [inserted] = await tx
+            .insert(eventVolunteers)
             .values({
-              email: invitation.email.toLowerCase(),
-              fullName: fullName || invitation.fullName,
-              rollNumber: rollNumber || null,
-              clerkId: `volunteer_${crypto.randomUUID()}`,
-              role: UserRole.STUDENT,
+              eventId: claimed.eventId,
+              userId,
+              gate: claimed.gate,
+              role: claimed.role,
+              status: 'ACTIVE',
+              assignedBy: claimed.invitedBy,
             })
             .returning();
-          existingUser = newUser;
+          volunteerRecord = inserted;
         }
-        userId = existingUser!.id;
-      }
 
-      // Activate or create eventVolunteers record
-      const [existingVol] = await db
-        .select()
-        .from(eventVolunteers)
-        .where(
-          and(
-            eq(eventVolunteers.eventId, invitation.eventId),
-            eq(eventVolunteers.userId, userId)
-          )
-        )
-        .limit(1);
-
-      let volunteerRecord;
-      if (existingVol) {
-        const [updated] = await db
-          .update(eventVolunteers)
-          .set({
-            status: 'ACTIVE',
-            gate: invitation.gate,
-            role: invitation.role,
-            updatedAt: new Date(),
+        const [targetEvent] = await tx
+          .select({
+            id: events.id,
+            title: events.title,
+            slug: events.slug,
+            startDate: events.startAt,
+            endDate: events.endAt,
           })
-          .where(eq(eventVolunteers.id, existingVol.id))
-          .returning();
-        volunteerRecord = updated;
-      } else {
-        const [inserted] = await db
-          .insert(eventVolunteers)
-          .values({
-            eventId: invitation.eventId,
-            userId,
-            gate: invitation.gate,
-            role: invitation.role,
-            status: 'ACTIVE',
-            assignedBy: invitation.invitedBy,
-          })
-          .returning();
-        volunteerRecord = inserted;
-      }
+          .from(events)
+          .where(eq(events.id, claimed.eventId))
+          .limit(1);
 
-      // Mark invitation accepted
-      await db
-        .update(volunteerInvitations)
-        .set({ status: 'ACCEPTED', updatedAt: new Date() })
-        .where(eq(volunteerInvitations.id, invitation.id));
-
-      const [targetEvent] = await db
-        .select({
-          id: events.id,
-          title: events.title,
-          slug: events.slug,
-          startDate: events.startAt,
-          endDate: events.endAt,
-        })
-        .from(events)
-        .where(eq(events.id, invitation.eventId))
-        .limit(1);
+        return {
+          volunteer: volunteerRecord,
+          event: targetEvent,
+        };
+      });
 
       return reply.status(200).send({
         success: true,
         message: 'Volunteer access activated successfully.',
-        volunteer: volunteerRecord,
-        event: targetEvent,
+        volunteer: result.volunteer,
+        event: result.event,
       });
     }
   );
@@ -579,6 +599,12 @@ export async function volunteerRoutes(server: FastifyInstance): Promise<void> {
     '/me/volunteer-assignments/:id/scanner-session',
     {
       preHandler: [requireAuth],
+      config: {
+        rateLimit: {
+          max: env.NODE_ENV === 'test' ? 1000 : 15,
+          timeWindow: '1 minute',
+        },
+      },
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const user = request.user!;
@@ -612,7 +638,7 @@ export async function volunteerRoutes(server: FastifyInstance): Promise<void> {
         );
       }
 
-      // Create an internal scanner passkey + session for the volunteer
+      // Create an internal scanner passkey + session for the volunteer (short-lived: 4h)
       const passkeyLabel = `${assignment.gate} (${assignment.role} - ${user.fullName})`;
       const passkeyHash = crypto
         .createHash('sha256')
@@ -625,7 +651,7 @@ export async function volunteerRoutes(server: FastifyInstance): Promise<void> {
           eventId: assignment.eventId,
           passkeyHash,
           label: passkeyLabel,
-          expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000), // 12 hours
+          expiresAt: new Date(Date.now() + 4 * 60 * 60 * 1000), // 4 hours
           createdBy: user.id,
         })
         .returning();
@@ -639,10 +665,11 @@ export async function volunteerRoutes(server: FastifyInstance): Promise<void> {
         })
         .returning();
 
-      // Sign scoped JWT scanner token (valid 12h)
+      // Sign scoped JWT scanner token (short-lived: 4h, scoped to assignment and event)
       const token = await new SignJWT({
         sessionId: session!.id,
         passkeyId: passkey!.id,
+        assignmentId: assignment.id,
         userId: user.id,
         eventId: assignment.eventId,
         volunteerName: user.fullName,
@@ -651,7 +678,7 @@ export async function volunteerRoutes(server: FastifyInstance): Promise<void> {
       })
         .setProtectedHeader({ alg: 'HS256' })
         .setIssuedAt()
-        .setExpirationTime('12h')
+        .setExpirationTime('4h')
         .sign(getJwtSecret());
 
       return reply.status(200).send({

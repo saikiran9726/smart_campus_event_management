@@ -164,9 +164,9 @@ describe('Scanner Camera Lifecycle & Event Context Suite', () => {
         exp: Math.floor(Date.now() / 1000) + 3600,
       });
 
-      localStorage.setItem('scanner_token', token);
-      localStorage.setItem(
-        'scanner_session',
+      sessionStorage.setItem('eventora_scanner_token', token);
+      sessionStorage.setItem(
+        'eventora_scanner_event',
         JSON.stringify({
           eventId: 'evt_hack_2026',
           eventTitle: 'Campus Hackathon 2026 Proposal',

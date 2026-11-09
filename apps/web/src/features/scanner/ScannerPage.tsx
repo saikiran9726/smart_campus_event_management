@@ -153,9 +153,9 @@ export const ScannerPage: React.FC = () => {
   // 1. Initial authentication and authoritative event context resolution
   useEffect(() => {
     const token =
-      sessionStorage.getItem('eventora_scanner_token') ||
-      localStorage.getItem('eventora_scanner_token') ||
-      localStorage.getItem('scanner_token');
+      sessionStorage.getItem('eventora_scanner_token');
+
+
 
     if (!token) {
       navigate('/scanner/unlock', { replace: true });
@@ -167,9 +167,9 @@ export const ScannerPage: React.FC = () => {
 
     // Inspect stored event
     const rawStored =
-      sessionStorage.getItem('eventora_scanner_event') ||
-      localStorage.getItem('eventora_scanner_event') ||
-      localStorage.getItem('scanner_session');
+      sessionStorage.getItem('eventora_scanner_event');
+
+
 
     let parsedStored: { eventId?: string; eventTitle?: string; volunteerName?: string } | null = null;
     if (rawStored) {
@@ -237,7 +237,7 @@ export const ScannerPage: React.FC = () => {
             volunteerName: res.volunteerName,
           });
           sessionStorage.setItem('eventora_scanner_event', updated);
-          localStorage.setItem('eventora_scanner_event', updated);
+
         }
       })
       .catch((err: any) => {

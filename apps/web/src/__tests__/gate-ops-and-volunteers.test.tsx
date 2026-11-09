@@ -247,7 +247,7 @@ describe('Gate Operations & Volunteer Management UI Suite', () => {
 
       await waitFor(() => {
         expect(postSpy).toHaveBeenCalledWith('/me/volunteer-assignments/asgn-1/scanner-session', {});
-        expect(localStorage.getItem('scanner_token')).toBe('VOL_JWT_TOKEN_ABC123');
+        expect(sessionStorage.getItem('eventora_scanner_token')).toBe('VOL_JWT_TOKEN_ABC123');
       });
     });
 

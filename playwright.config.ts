@@ -28,6 +28,12 @@ export default defineConfig({
         viewport: { width: 1280, height: 720 },
       },
     },
+    {
+      name: 'Pixel 5',
+      use: {
+        ...devices['Pixel 5'],
+      },
+    },
   ],
   webServer: [
     {
@@ -37,6 +43,7 @@ export default defineConfig({
       timeout: 60000,
       env: {
         NODE_ENV: 'test',
+        ALLOW_TEST_AUTH_BYPASS: 'true',
         PORT: '4000',
         DATABASE_URL:
           process.env.DATABASE_URL ||
@@ -53,8 +60,10 @@ export default defineConfig({
       timeout: 60000,
       env: {
         NODE_ENV: 'test',
+        ALLOW_TEST_AUTH_BYPASS: 'true',
         PORT: '5173',
         VITE_API_URL: 'http://localhost:4000',
+        VITE_USE_MOCK_AUTH: 'true',
       },
     },
   ],

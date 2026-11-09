@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: eventora-postgres-local
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: eventora_local
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_local_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d eventora_local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - eventora-network
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: eventora-api-local
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: 4000
+      DATABASE_URL: postgresql://postgres:password@postgres:5432/eventora_local?sslmode=disable
+      DATABASE_SSL: "false"
+      PUBLIC_API_URL: http://localhost:4000
+      PUBLIC_WEB_URL: http://localhost:8080
+      CLERK_PUBLISHABLE_KEY: pk_test_placeholder_key_here
+      CLERK_SECRET_KEY: sk_test_placeholder_key_here
+      CLERK_WEBHOOK_SECRET: whsec_placeholder_svix_secret_here
+      MAGIC_LINK_SECRET: super_secret_magic_link_hmac_signing_key_32_bytes_min
+      OD_SEAL_SECRET: super_secret_od_seal_hmac_signing_key_32_bytes_min
+      ALLOW_TEST_AUTH_BYPASS: "true"
+    ports:
+      - "4000:4000"
+    networks:
+      - eventora-network
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_URL: http://localhost:4000
+        VITE_CLERK_PUBLISHABLE_KEY: pk_test_placeholder_key_here
+        VITE_TURNSTILE_SITE_KEY: 1x00000000000000000000AA
+    container_name: eventora-web-local
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "8080:8080"
+    networks:
+      - eventora-network
+
+volumes:
+  postgres_local_data:
+    name: eventora_postgres_local_data
+
+networks:
+  eventora-network:
+    driver: bridge

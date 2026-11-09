@@ -34,6 +34,11 @@ export interface DbUser {
   cooldownUntil?: string | null;
   profileComplete?: boolean;
   missingFields?: string[];
+  volunteer?: {
+    isVolunteer: boolean;
+    hasPendingInvite: boolean;
+    activeCount: number;
+  };
   createdAt: string;
 }
 
@@ -51,9 +56,11 @@ export interface AuthContextValue {
   signOut: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextValue | null>(null);
+export const AuthContext = createContext<AuthContextValue | null>(null);
 
 const isClerkKeyValid =
+  env.MODE !== 'test' &&
+  !import.meta.env.VITE_USE_MOCK_AUTH &&
   Boolean(env.VITE_CLERK_PUBLISHABLE_KEY) &&
   !env.VITE_CLERK_PUBLISHABLE_KEY.includes('dummy') &&
   !env.VITE_CLERK_PUBLISHABLE_KEY.includes('placeholder') &&
@@ -64,13 +71,14 @@ export const ClerkAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const { getToken, signOut: clerkSignOut } = useClerkAuth();
 
   const [testUserId, setTestUserId] = React.useState<string | null>(() => {
-    if (typeof window !== 'undefined') {
+    if (!import.meta.env.PROD && typeof window !== 'undefined') {
       return sessionStorage.getItem('eventora_test_user_id') || localStorage.getItem('eventora_test_user_id');
     }
     return null;
   });
 
   useEffect(() => {
+    if (import.meta.env.PROD) return;
     const checkStorage = () => {
       const current =
         sessionStorage.getItem('eventora_test_user_id') || localStorage.getItem('eventora_test_user_id');
@@ -94,9 +102,15 @@ export const ClerkAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (testUserId) return 'test-token';
       if (!isSignedIn) return null;
       try {
-        return await getToken();
+        const token = await getToken();
+        if (token) return token;
+        return await getToken({ skipCache: true });
       } catch {
-        return null;
+        try {
+          return await getToken({ skipCache: true });
+        } catch {
+          return null;
+        }
       }
     });
   }, [isSignedIn, getToken, testUserId]);
@@ -144,6 +158,12 @@ export const ClerkAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem('eventora_test_user_id');
       localStorage.removeItem('eventora_test_user_id');
+      sessionStorage.removeItem('eventora_scanner_token');
+      sessionStorage.removeItem('eventora_scanner_event');
+      localStorage.removeItem('eventora_scanner_token');
+      localStorage.removeItem('eventora_scanner_event');
+      localStorage.removeItem('scanner_token');
+      localStorage.removeItem('scanner_session');
     }
     await clerkSignOut();
   };
@@ -178,13 +198,14 @@ export const ClerkAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
 export const MockAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [testUserId, setTestUserId] = React.useState<string | null>(() => {
-    if (typeof window !== 'undefined') {
+    if (!import.meta.env.PROD && typeof window !== 'undefined') {
       return sessionStorage.getItem('eventora_test_user_id') || localStorage.getItem('eventora_test_user_id');
     }
     return null;
   });
 
   useEffect(() => {
+    if (import.meta.env.PROD) return;
     const checkStorage = () => {
       const current =
         sessionStorage.getItem('eventora_test_user_id') || localStorage.getItem('eventora_test_user_id');
@@ -253,6 +274,12 @@ export const MockAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem('eventora_test_user_id');
       localStorage.removeItem('eventora_test_user_id');
+      sessionStorage.removeItem('eventora_scanner_token');
+      sessionStorage.removeItem('eventora_scanner_event');
+      localStorage.removeItem('eventora_scanner_token');
+      localStorage.removeItem('eventora_scanner_event');
+      localStorage.removeItem('scanner_token');
+      localStorage.removeItem('scanner_session');
       setTestUserId(null);
     }
   };
@@ -376,6 +403,42 @@ export const RequireRole: React.FC<RequireRoleProps> = ({ roles, children, fallb
         />
       </div>
     );
+  }
+
+  return <>{children}</>;
+};
+
+export interface RequireVolunteerProps {
+  children?: React.ReactNode;
+}
+
+export const RequireVolunteer: React.FC<RequireVolunteerProps> = ({ children }) => {
+  const { isLoaded, isSignedIn, user } = useAuth();
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const hasInviteCode = Boolean(searchParams.get('code') || searchParams.get('token'));
+
+  if (!isLoaded) {
+    return (
+      <div className="p-8 space-y-4 max-w-4xl mx-auto" data-testid="auth-loading-skeleton">
+        <Skeleton className="h-10 w-48" />
+        <Skeleton className="h-64 w-full rounded-xl" />
+      </div>
+    );
+  }
+
+  if (!isSignedIn) {
+    return <Navigate to="/" state={{ from: location }} replace />;
+  }
+
+  const isEligible = Boolean(
+    user?.volunteer?.isVolunteer ||
+    user?.volunteer?.hasPendingInvite ||
+    hasInviteCode
+  );
+
+  if (!isEligible) {
+    return <Navigate to="/" replace />;
   }
 
   return <>{children}</>;

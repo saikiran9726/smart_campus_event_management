@@ -18,6 +18,19 @@ export class ApiError extends Error {
 
 let tokenGetter: (() => Promise<string | null>) | null = null;
 
+const recentToasts = new Map<string, number>();
+const TOAST_DEDUPE_MS = 2500;
+
+function showDeduplicatedToast(key: string, options: Parameters<typeof toast>[0]) {
+  const now = Date.now();
+  const last = recentToasts.get(key) || 0;
+  if (now - last < TOAST_DEDUPE_MS) {
+    return;
+  }
+  recentToasts.set(key, now);
+  toast(options);
+}
+
 export function setAuthTokenGetter(getter: () => Promise<string | null>) {
   tokenGetter = getter;
 }
@@ -137,11 +150,12 @@ export async function apiFetch<T = unknown>(
       }
     }
 
-    if (!token) {
+    const isScannerEndpoint = endpoint.includes('/scanner') || endpoint.includes('/gate');
+    if (!token && isScannerEndpoint) {
       const scannerToken =
-        sessionStorage.getItem('eventora_scanner_token') ||
-        localStorage.getItem('eventora_scanner_token') ||
-        localStorage.getItem('scanner_token');
+        sessionStorage.getItem('eventora_scanner_token');
+
+
       if (scannerToken) {
         token = scannerToken;
       }
@@ -153,8 +167,9 @@ export async function apiFetch<T = unknown>(
     : `${env.VITE_API_URL}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
 
   const headers = new Headers(customHeaders);
+  const isDevOrTest = !import.meta.env.PROD && (env.DEV || env.MODE === 'development' || env.MODE === 'test');
   const testUserId =
-    typeof window !== 'undefined'
+    isDevOrTest && typeof window !== 'undefined'
       ? sessionStorage.getItem('eventora_test_user_id') || localStorage.getItem('eventora_test_user_id')
       : null;
   if (testUserId) {
@@ -176,7 +191,7 @@ export async function apiFetch<T = unknown>(
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : 'Network error';
     if (showToast) {
-      toast({
+      showDeduplicatedToast('NETWORK_ERROR', {
         variant: 'destructive',
         title: 'Connection Error',
         description: `Cannot reach API at ${env.VITE_API_URL}. Is the server running?`,
@@ -199,7 +214,8 @@ export async function apiFetch<T = unknown>(
 
     if (showToast) {
       const mapped = ERROR_MESSAGES[code];
-      toast({
+      const toastKey = `${code}:${message}`;
+      showDeduplicatedToast(toastKey, {
         variant: 'destructive',
         title: mapped?.title || 'Action Failed',
         description: message || mapped?.defaultMessage,

@@ -99,10 +99,10 @@ export const ScannerUnlockPage: React.FC = () => {
 
       sessionStorage.setItem('eventora_scanner_token', res.token);
       sessionStorage.setItem('eventora_scanner_event', sessionData);
-      localStorage.setItem('eventora_scanner_token', res.token);
-      localStorage.setItem('eventora_scanner_event', sessionData);
-      localStorage.setItem('scanner_token', res.token);
-      localStorage.setItem('scanner_session', sessionData);
+
+
+
+
 
       toast({
         title: 'Scanner Session Activated',

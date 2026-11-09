@@ -10,7 +10,7 @@
     "test": "vitest run",
     "test:concurrency": "vitest run concurrency",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx src/db/migrate.ts",
+    "db:migrate": "node scripts/migrate.mjs",
     "db:migrate:prod": "node dist/db/migrate.js",
     "db:bootstrap": "tsx src/db/bootstrap.ts",
     "db:seed": "tsx src/db/seed.ts",
