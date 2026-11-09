@@ -59,6 +59,8 @@ export interface AuthContextValue {
 export const AuthContext = createContext<AuthContextValue | null>(null);
 
 const isClerkKeyValid =
+  env.MODE !== 'test' &&
+  !import.meta.env.VITE_USE_MOCK_AUTH &&
   Boolean(env.VITE_CLERK_PUBLISHABLE_KEY) &&
   !env.VITE_CLERK_PUBLISHABLE_KEY.includes('dummy') &&
   !env.VITE_CLERK_PUBLISHABLE_KEY.includes('placeholder') &&
