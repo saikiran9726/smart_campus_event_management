@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -406,8 +406,14 @@ describe('Event Registration State & Duplicate Prevention', () => {
       expect(screen.getByText('Upcoming (1)')).toBeInTheDocument();
     });
 
-    // Pending payment event is NOT counted in upcoming passes
-    expect(screen.queryByText('Paid Design Workshop')).not.toBeInTheDocument();
+    // Pending payment event is NOT counted in upcoming passes and gets no entry pass...
+    expect(screen.getAllByText('Paid Design Workshop')).toHaveLength(1);
+    // ...it is only listed under "Other registrations", labelled as payment pending.
+    const other = screen.getByTestId('passport-other-registrations');
+    expect(within(other).getByText('Paid Design Workshop')).toBeInTheDocument();
+    expect(within(other).getByText('Payment pending')).toBeInTheDocument();
+    // The confirmed free event is not in the "Other registrations" section.
+    expect(within(other).queryByText('Free Campus Seminar')).not.toBeInTheDocument();
   });
 
   it('9. Ticket modal renders venueName accurately when returned from backend response without hardcoding', async () => {

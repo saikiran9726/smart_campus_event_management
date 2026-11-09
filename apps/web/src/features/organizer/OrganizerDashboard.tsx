@@ -18,6 +18,7 @@ import {
   Layers,
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { toast } from '@/components/ui/toast';
 import { useActiveClub } from './ActiveClubContext';
 import { ClubSwitcher } from './ClubSwitcher';
 import { ZeroClubsEmptyState } from './ZeroClubsEmptyState';
@@ -78,6 +79,26 @@ export const OrganizerDashboard: React.FC = () => {
   });
 
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+
+  // Soft-cancel: sets the event to CANCELLED (no data is deleted) and stops new registrations.
+  const handleCancelEvent = async (evt: { id: string; title: string }) => {
+    const confirmed = window.confirm(
+      `Cancel "${evt.title}"?\n\nNew registrations will stop and the event will be marked Cancelled. ` +
+        `Existing registrations and data are kept. This cannot be undone from this screen.`
+    );
+    if (!confirmed) return;
+    setCancellingId(evt.id);
+    try {
+      await api.delete(`/events/${evt.id}`);
+      toast.success('Event cancelled.');
+      await refetchEvents();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to cancel the event.');
+    } finally {
+      setCancellingId(null);
+    }
+  };
 
   const filteredEvents = (events ?? []).filter((e) => {
     if (statusFilter === 'ALL') return true;
@@ -333,6 +354,22 @@ export const OrganizerDashboard: React.FC = () => {
                     <ArrowRight className="h-3.5 w-3.5" />
                   </Button>
                 </div>
+
+                {(evt.status === EventStatus.PUBLISHED ||
+                  evt.status === EventStatus.APPROVED ||
+                  evt.status === EventStatus.LIVE) && (
+                  <div className="pt-1">
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="text-xs h-8 w-full"
+                      disabled={cancellingId === evt.id}
+                      onClick={() => handleCancelEvent(evt)}
+                    >
+                      {cancellingId === evt.id ? 'Cancelling…' : 'Cancel event'}
+                    </Button>
+                  </div>
+                )}
               </Card>
             ))}
           </div>
