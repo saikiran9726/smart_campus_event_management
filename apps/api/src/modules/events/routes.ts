@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, gte, inArray, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { DEFAULT_PROJECT_SUBMISSION_CONFIG, EventStatus, ProjectSubmissionConfig, UserRole } from '@eventora/shared';
 import { db } from '../../db/client';
@@ -446,7 +446,7 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
           reviewCount: sql<number>`count(${reviews.id})::int`,
         })
         .from(reviews)
-        .where(inArray(reviews.eventId, eventIds))
+        .where(and(inArray(reviews.eventId, eventIds), isNull(reviews.hiddenAt)))
         .groupBy(reviews.eventId);
 
       for (const r of ratings) {
@@ -608,7 +608,7 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
           reviewCount: sql<number>`count(${reviews.id})::int`,
         })
         .from(reviews)
-        .where(eq(reviews.eventId, event.id));
+        .where(and(eq(reviews.eventId, event.id), isNull(reviews.hiddenAt)));
 
       const isPast = event.endAt <= new Date() || event.status === EventStatus.COMPLETED;
 

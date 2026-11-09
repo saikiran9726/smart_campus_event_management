@@ -24,6 +24,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { ReviewsSummary } from './ReviewsSummary';
+import { ReviewFormModal } from './ReviewFormModal';
 import { ResourceVaultTeaser } from './ResourceVaultTeaser';
 import { ProjectSubmissionConfig } from '@eventora/shared';
 import { WinnersPodium, WinnerItem } from './WinnersPodium';
@@ -119,6 +120,24 @@ export const EventPage: React.FC = () => {
   const [isTicketOpen, setIsTicketOpen] = useState(false);
   const [isPendingPaymentOpen, setIsPendingPaymentOpen] = useState(false);
   const [isWaitlistModalOpen, setIsWaitlistModalOpen] = useState(false);
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+
+  const { data: reviewsData, refetch: refetchReviews } = useQuery({
+    queryKey: ['events', slug, 'reviews'],
+    queryFn: async () => {
+      try {
+        return await api.get<{
+          average: number;
+          count: number;
+          histogram: Record<number, number>;
+          reviews: any[];
+        }>(`/public/events/${slug}/reviews`, { showToast: false });
+      } catch {
+        return null;
+      }
+    },
+    enabled: Boolean(slug),
+  });
 
   // Fetch full event details
   const { data: event, isLoading } = useQuery<EventDetailData>({
@@ -435,13 +454,17 @@ export const EventPage: React.FC = () => {
           <ResourceVaultTeaser />
 
           {/* Reviews Summary */}
-          {event?.reviews && (
-            <ReviewsSummary
-              average={event.reviews.average}
-              count={event.reviews.count}
-              histogram={event.reviews.histogram}
-            />
-          )}
+          <ReviewsSummary
+            average={reviewsData?.average ?? event?.averageRating ?? event?.reviews?.average ?? 0}
+            count={reviewsData?.count ?? event?.reviewCount ?? event?.reviews?.count ?? 0}
+            histogram={reviewsData?.histogram ?? event?.reviews?.histogram ?? { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }}
+            reviews={reviewsData?.reviews ?? []}
+            canReview={Boolean(
+              userReg?.ticket?.checkedInAt &&
+              (event?.isPast || (event?.endAt && new Date() > new Date(event.endAt)) || event?.status === 'COMPLETED')
+            )}
+            onOpenReviewModal={() => setIsReviewModalOpen(true)}
+          />
 
           {/* Winners Podium for competitions */}
           {event?.winners && event.winners.length > 0 && (
