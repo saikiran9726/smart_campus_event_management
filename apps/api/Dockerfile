@@ -46,9 +46,9 @@ COPY --from=builder /prod/api /app
 # Run as non-root user for container security
 USER node
 
-# Healthcheck hitting /health liveness probe
+# Healthcheck hitting /healthz liveness probe
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl -f http://localhost:4000/health || exit 1
+  CMD curl -f http://localhost:4000/healthz || exit 1
 
 EXPOSE 4000
 

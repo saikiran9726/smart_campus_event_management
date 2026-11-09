@@ -157,10 +157,33 @@ describe('Production Hardening & Connectivity Verification Suite (Prompt 19)', (
       expect(JSON.parse(response.body)).toEqual({ status: 'ok' });
     });
 
+    it('GET /healthz returns 200 without querying database', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/healthz',
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({ status: 'ok' });
+    });
+
     it('GET /ready returns 200 when database and schema migrations are ready', async () => {
       const response = await app.inject({
         method: 'GET',
         url: '/ready',
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body.status).toBe('ready');
+      expect(body.db).toBe('up');
+      expect(body.migrations).toBe('applied');
+    });
+
+    it('GET /readyz returns 200 when database and schema migrations are ready', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/readyz',
       });
 
       expect(response.statusCode).toBe(200);

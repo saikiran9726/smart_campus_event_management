@@ -264,13 +264,15 @@ export function buildServer(opts: FastifyServerOptions = {}): FastifyInstance {
     return reply.status(500).send(response);
   });
 
-  // Health endpoint: Liveness probe without DB access
-  server.get('/health', async (_request, reply) => {
+  // Health endpoint: Liveness probe without DB access (supports /health and /healthz)
+  const healthHandler = async (_request: any, reply: any) => {
     return reply.status(200).send({ status: 'ok' });
-  });
+  };
+  server.get('/health', healthHandler);
+  server.get('/healthz', healthHandler);
 
-  // Ready endpoint: Readiness probe with DB ping & table check
-  server.get('/ready', async (request, reply) => {
+  // Ready endpoint: Readiness probe with DB ping & table check (supports /ready and /readyz)
+  const readyHandler = async (request: any, reply: any) => {
     try {
       await pool.query('SELECT 1');
       const result = await pool.query(
@@ -295,7 +297,9 @@ export function buildServer(opts: FastifyServerOptions = {}): FastifyInstance {
         error: err?.message || 'Database unavailable',
       });
     }
-  });
+  };
+  server.get('/ready', readyHandler);
+  server.get('/readyz', readyHandler);
 
   // Version endpoint
   server.get('/version', async (_request, reply) => {

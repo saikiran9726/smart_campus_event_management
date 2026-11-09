@@ -58,7 +58,21 @@
     - 8 unlinked users skipped (not yet signed up with Clerk).
     - 0 unverified in Clerk, 0 errors.
     - Zero modifications made to database.
-- [ ] **Phase 5: Production Hardening**
+- [x] **Phase 5: Production Hardening** (Completed)
+  - **Environment Validation**: Verified Zod validation schemas and fast-fail production checks across `apps/api/src/env.ts` and `apps/web/src/env.ts`. Created secret-free `.env.example` files in repo root, `apps/api/.env.example`, and `apps/web/.env.example`.
+  - **Health Probes & Lifecycle**: Added `/healthz` (liveness) and `/readyz` (readiness with database connectivity and migration verification) alongside existing `/health` and `/ready`. Verified graceful shutdown in `apps/api/src/index.ts` handling `SIGTERM` and `SIGINT` (stopping workers, closing Socket.IO, Fastify server, and PG pool within 10s).
+  - **Containerization**:
+    - Created multi-stage, non-root Dockerfile for `apps/web/Dockerfile` with `nginxinc/nginx-unprivileged:alpine`, SPA fallback routing, and security headers.
+    - Updated `apps/api/Dockerfile` with non-root user `node`, Corepack pnpm, and `/healthz` health check.
+    - Created local `docker-compose.yml` orchestrating PostgreSQL 16, Eventora API, and Eventora Web.
+  - **Database Migration Isolation**: Standalone migration runner (`apps/api/scripts/migrate.mjs`) isolated from devDependencies and executed with PostgreSQL advisory locks. Documented zero-downtime release ordering and rollback procedure.
+  - **Observability**: Fastify `onRequest` hook injecting `x-request-id` into all response headers. Structured JSON logging with field-level redaction (`req.headers.authorization`, `req.headers.cookie`, `*.email`, `*.token`).
+  - **Production Dependency Audit**:
+    - Ran `pnpm audit --prod`.
+    - Upgraded `@clerk/clerk-react` to `^5.61.11` resolving high-severity advisory `GHSA-w24r-5266-9c3c`.
+    - Added pnpm override for `fflate >= 0.8.3` resolving advisory `GHSA-px8p-9vwx-vf98`.
+    - Analyzed remaining advisories: `zod` (<4.6.6 array memory exhaustion) is fully mitigated at the application edge by Fastify's 1MB payload ceiling and schema length constraints; `uuid@8.3.2` is a transitive dependency of `exceljs` whose vulnerable methods are unused.
+- [ ] **Phase 6: CI/CD Pipeline**
 - [x] **Phase 4: Dry-Run Reconcile Script** (Completed)
   - Updated `scripts/reconcile-volunteer-placeholders.ts` with `maskEmail(email)` to guarantee zero full email addresses are output (formatted as `a***@domain.com`).
   - Added safety lock requiring `--apply --confirm` to prevent accidental database writes.
@@ -68,7 +82,35 @@
     - 8 unlinked users skipped (not yet signed up with Clerk).
     - 0 unverified in Clerk, 0 errors.
     - Zero modifications made to database.
-- [ ] **Phase 5: Production Hardening**
-- [ ] **Phase 5: Production Hardening**
+- [x] **Phase 5: Production Hardening** (Completed)
+  - **Environment Validation**: Verified Zod validation schemas and fast-fail production checks across `apps/api/src/env.ts` and `apps/web/src/env.ts`. Created secret-free `.env.example` files in repo root, `apps/api/.env.example`, and `apps/web/.env.example`.
+  - **Health Probes & Lifecycle**: Added `/healthz` (liveness) and `/readyz` (readiness with database connectivity and migration verification) alongside existing `/health` and `/ready`. Verified graceful shutdown in `apps/api/src/index.ts` handling `SIGTERM` and `SIGINT` (stopping workers, closing Socket.IO, Fastify server, and PG pool within 10s).
+  - **Containerization**:
+    - Created multi-stage, non-root Dockerfile for `apps/web/Dockerfile` with `nginxinc/nginx-unprivileged:alpine`, SPA fallback routing, and security headers.
+    - Updated `apps/api/Dockerfile` with non-root user `node`, Corepack pnpm, and `/healthz` health check.
+    - Created local `docker-compose.yml` orchestrating PostgreSQL 16, Eventora API, and Eventora Web.
+  - **Database Migration Isolation**: Standalone migration runner (`apps/api/scripts/migrate.mjs`) isolated from devDependencies and executed with PostgreSQL advisory locks. Documented zero-downtime release ordering and rollback procedure.
+  - **Observability**: Fastify `onRequest` hook injecting `x-request-id` into all response headers. Structured JSON logging with field-level redaction (`req.headers.authorization`, `req.headers.cookie`, `*.email`, `*.token`).
+  - **Production Dependency Audit**:
+    - Ran `pnpm audit --prod`.
+    - Upgraded `@clerk/clerk-react` to `^5.61.11` resolving high-severity advisory `GHSA-w24r-5266-9c3c`.
+    - Added pnpm override for `fflate >= 0.8.3` resolving advisory `GHSA-px8p-9vwx-vf98`.
+    - Analyzed remaining advisories: `zod` (<4.6.6 array memory exhaustion) is fully mitigated at the application edge by Fastify's 1MB payload ceiling and schema length constraints; `uuid@8.3.2` is a transitive dependency of `exceljs` whose vulnerable methods are unused.
+- [ ] **Phase 6: CI/CD Pipeline**
+- [x] **Phase 5: Production Hardening** (Completed)
+  - **Environment Validation**: Verified Zod validation schemas and fast-fail production checks across `apps/api/src/env.ts` and `apps/web/src/env.ts`. Created secret-free `.env.example` files in repo root, `apps/api/.env.example`, and `apps/web/.env.example`.
+  - **Health Probes & Lifecycle**: Added `/healthz` (liveness) and `/readyz` (readiness with database connectivity and migration verification) alongside existing `/health` and `/ready`. Verified graceful shutdown in `apps/api/src/index.ts` handling `SIGTERM` and `SIGINT` (stopping workers, closing Socket.IO, Fastify server, and PG pool within 10s).
+  - **Containerization**:
+    - Created multi-stage, non-root Dockerfile for `apps/web/Dockerfile` with `nginxinc/nginx-unprivileged:alpine`, SPA fallback routing, and security headers.
+    - Updated `apps/api/Dockerfile` with non-root user `node`, Corepack pnpm, and `/healthz` health check.
+    - Created local `docker-compose.yml` orchestrating PostgreSQL 16, Eventora API, and Eventora Web.
+  - **Database Migration Isolation**: Standalone migration runner (`apps/api/scripts/migrate.mjs`) isolated from devDependencies and executed with PostgreSQL advisory locks. Documented zero-downtime release ordering and rollback procedure.
+  - **Observability**: Fastify `onRequest` hook injecting `x-request-id` into all response headers. Structured JSON logging with field-level redaction (`req.headers.authorization`, `req.headers.cookie`, `*.email`, `*.token`).
+  - **Production Dependency Audit**:
+    - Ran `pnpm audit --prod`.
+    - Upgraded `@clerk/clerk-react` to `^5.61.11` resolving high-severity advisory `GHSA-w24r-5266-9c3c`.
+    - Added pnpm override for `fflate >= 0.8.3` resolving advisory `GHSA-px8p-9vwx-vf98`.
+    - Analyzed remaining advisories: `zod` (<4.6.6 array memory exhaustion) is fully mitigated at the application edge by Fastify's 1MB payload ceiling and schema length constraints; `uuid@8.3.2` is a transitive dependency of `exceljs` whose vulnerable methods are unused.
+- [ ] **Phase 6: CI/CD Pipeline**
 - [ ] **Phase 6: CI/CD Pipeline**
 - [ ] **Phase 7: Final Gate & Release Approval**
