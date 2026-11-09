@@ -31,18 +31,18 @@ async function runCheck(name, checkFn) {
 }
 
 async function main() {
-  // 1. API /health (Liveness)
-  await runCheck('API Liveness (/health)', async () => {
-    const res = await fetch(`${API_URL}/health`);
+  // 1. API /health and /healthz (Liveness)
+  await runCheck('API Liveness (/healthz)', async () => {
+    const res = await fetch(`${API_URL}/healthz`);
     if (res.status !== 200) throw new Error(`Expected status 200, got ${res.status}`);
     const json = await res.json();
     if (json.status !== 'ok') throw new Error(`Expected json status: 'ok', got ${json.status}`);
     return `(Status 200, status: ok)`;
   });
 
-  // 2. API /ready (Readiness & DB)
-  await runCheck('API Readiness & DB Connection (/ready)', async () => {
-    const res = await fetch(`${API_URL}/ready`);
+  // 2. API /ready and /readyz (Readiness & DB)
+  await runCheck('API Readiness & DB Connection (/readyz)', async () => {
+    const res = await fetch(`${API_URL}/readyz`);
     if (res.status !== 200) throw new Error(`Expected status 200, got ${res.status}`);
     const json = await res.json();
     if (json.status !== 'ready' || json.db !== 'up') {

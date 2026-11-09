@@ -72,7 +72,28 @@
     - Upgraded `@clerk/clerk-react` to `^5.61.11` resolving high-severity advisory `GHSA-w24r-5266-9c3c`.
     - Added pnpm override for `fflate >= 0.8.3` resolving advisory `GHSA-px8p-9vwx-vf98`.
     - Analyzed remaining advisories: `zod` (<4.6.6 array memory exhaustion) is fully mitigated at the application edge by Fastify's 1MB payload ceiling and schema length constraints; `uuid@8.3.2` is a transitive dependency of `exceljs` whose vulnerable methods are unused.
-- [ ] **Phase 6: CI/CD Pipeline**
+- [x] **Phase 6: CI/CD Pipeline** (Completed)
+  - Updated `.github/workflows/ci.yml` with a 3-tier pipeline architecture:
+    1. **Quality & Test Gate (`test-and-verify`)**:
+       - Dependency installation with pnpm caching and Node 22.
+       - Database migration execution and clean-database idempotency verification.
+       - Zero-placeholder invariant verification (`git grep -InE "TODO|FIXME|not implemented"`).
+       - Workspace typechecking and linting.
+       - Route parity audit (`scripts/route-audit.mjs`).
+       - Full unit/integration tests and ACID concurrency trials.
+       - Cross-platform Playwright E2E execution on both `chromium` (desktop) and `Pixel 5` (mobile).
+    2. **Container Build Verification (`build-containers`)**:
+       - Multi-stage Docker image builds for both `apps/api` and `apps/web`.
+    3. **Production Release Gate (`deploy-production`)**:
+       - Enforces manual approval gate via GitHub `production` environment.
+       - Strict release ordering:
+         1. Isolated database migration execution using PostgreSQL advisory lock.
+         2. API deployment triggering.
+         3. Deep `/readyz` readiness probe with 180s timeout; halts deployment on failure.
+         4. Web SPA deployment to Cloudflare Pages.
+         5. Automated post-deployment smoke verification (`scripts/smoke-prod.mjs`).
+  - Documented all required GitHub Environment secrets: `DATABASE_URL`, `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY`, `CLERK_WEBHOOK_SECRET`, `MAGIC_LINK_SECRET`, `OD_SEAL_SECRET`, `PUBLIC_WEB_URL`, `PUBLIC_API_URL`, `RENDER_DEPLOY_HOOK_URL`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
+- [ ] **Phase 7: Final Gate & Release Approval**
 - [x] **Phase 4: Dry-Run Reconcile Script** (Completed)
   - Updated `scripts/reconcile-volunteer-placeholders.ts` with `maskEmail(email)` to guarantee zero full email addresses are output (formatted as `a***@domain.com`).
   - Added safety lock requiring `--apply --confirm` to prevent accidental database writes.
@@ -96,7 +117,28 @@
     - Upgraded `@clerk/clerk-react` to `^5.61.11` resolving high-severity advisory `GHSA-w24r-5266-9c3c`.
     - Added pnpm override for `fflate >= 0.8.3` resolving advisory `GHSA-px8p-9vwx-vf98`.
     - Analyzed remaining advisories: `zod` (<4.6.6 array memory exhaustion) is fully mitigated at the application edge by Fastify's 1MB payload ceiling and schema length constraints; `uuid@8.3.2` is a transitive dependency of `exceljs` whose vulnerable methods are unused.
-- [ ] **Phase 6: CI/CD Pipeline**
+- [x] **Phase 6: CI/CD Pipeline** (Completed)
+  - Updated `.github/workflows/ci.yml` with a 3-tier pipeline architecture:
+    1. **Quality & Test Gate (`test-and-verify`)**:
+       - Dependency installation with pnpm caching and Node 22.
+       - Database migration execution and clean-database idempotency verification.
+       - Zero-placeholder invariant verification (`git grep -InE "TODO|FIXME|not implemented"`).
+       - Workspace typechecking and linting.
+       - Route parity audit (`scripts/route-audit.mjs`).
+       - Full unit/integration tests and ACID concurrency trials.
+       - Cross-platform Playwright E2E execution on both `chromium` (desktop) and `Pixel 5` (mobile).
+    2. **Container Build Verification (`build-containers`)**:
+       - Multi-stage Docker image builds for both `apps/api` and `apps/web`.
+    3. **Production Release Gate (`deploy-production`)**:
+       - Enforces manual approval gate via GitHub `production` environment.
+       - Strict release ordering:
+         1. Isolated database migration execution using PostgreSQL advisory lock.
+         2. API deployment triggering.
+         3. Deep `/readyz` readiness probe with 180s timeout; halts deployment on failure.
+         4. Web SPA deployment to Cloudflare Pages.
+         5. Automated post-deployment smoke verification (`scripts/smoke-prod.mjs`).
+  - Documented all required GitHub Environment secrets: `DATABASE_URL`, `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY`, `CLERK_WEBHOOK_SECRET`, `MAGIC_LINK_SECRET`, `OD_SEAL_SECRET`, `PUBLIC_WEB_URL`, `PUBLIC_API_URL`, `RENDER_DEPLOY_HOOK_URL`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
+- [ ] **Phase 7: Final Gate & Release Approval**
 - [x] **Phase 5: Production Hardening** (Completed)
   - **Environment Validation**: Verified Zod validation schemas and fast-fail production checks across `apps/api/src/env.ts` and `apps/web/src/env.ts`. Created secret-free `.env.example` files in repo root, `apps/api/.env.example`, and `apps/web/.env.example`.
   - **Health Probes & Lifecycle**: Added `/healthz` (liveness) and `/readyz` (readiness with database connectivity and migration verification) alongside existing `/health` and `/ready`. Verified graceful shutdown in `apps/api/src/index.ts` handling `SIGTERM` and `SIGINT` (stopping workers, closing Socket.IO, Fastify server, and PG pool within 10s).
@@ -111,6 +153,48 @@
     - Upgraded `@clerk/clerk-react` to `^5.61.11` resolving high-severity advisory `GHSA-w24r-5266-9c3c`.
     - Added pnpm override for `fflate >= 0.8.3` resolving advisory `GHSA-px8p-9vwx-vf98`.
     - Analyzed remaining advisories: `zod` (<4.6.6 array memory exhaustion) is fully mitigated at the application edge by Fastify's 1MB payload ceiling and schema length constraints; `uuid@8.3.2` is a transitive dependency of `exceljs` whose vulnerable methods are unused.
-- [ ] **Phase 6: CI/CD Pipeline**
-- [ ] **Phase 6: CI/CD Pipeline**
+- [x] **Phase 6: CI/CD Pipeline** (Completed)
+  - Updated `.github/workflows/ci.yml` with a 3-tier pipeline architecture:
+    1. **Quality & Test Gate (`test-and-verify`)**:
+       - Dependency installation with pnpm caching and Node 22.
+       - Database migration execution and clean-database idempotency verification.
+       - Zero-placeholder invariant verification (`git grep -InE "TODO|FIXME|not implemented"`).
+       - Workspace typechecking and linting.
+       - Route parity audit (`scripts/route-audit.mjs`).
+       - Full unit/integration tests and ACID concurrency trials.
+       - Cross-platform Playwright E2E execution on both `chromium` (desktop) and `Pixel 5` (mobile).
+    2. **Container Build Verification (`build-containers`)**:
+       - Multi-stage Docker image builds for both `apps/api` and `apps/web`.
+    3. **Production Release Gate (`deploy-production`)**:
+       - Enforces manual approval gate via GitHub `production` environment.
+       - Strict release ordering:
+         1. Isolated database migration execution using PostgreSQL advisory lock.
+         2. API deployment triggering.
+         3. Deep `/readyz` readiness probe with 180s timeout; halts deployment on failure.
+         4. Web SPA deployment to Cloudflare Pages.
+         5. Automated post-deployment smoke verification (`scripts/smoke-prod.mjs`).
+  - Documented all required GitHub Environment secrets: `DATABASE_URL`, `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY`, `CLERK_WEBHOOK_SECRET`, `MAGIC_LINK_SECRET`, `OD_SEAL_SECRET`, `PUBLIC_WEB_URL`, `PUBLIC_API_URL`, `RENDER_DEPLOY_HOOK_URL`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
+- [ ] **Phase 7: Final Gate & Release Approval**
+- [x] **Phase 6: CI/CD Pipeline** (Completed)
+  - Updated `.github/workflows/ci.yml` with a 3-tier pipeline architecture:
+    1. **Quality & Test Gate (`test-and-verify`)**:
+       - Dependency installation with pnpm caching and Node 22.
+       - Database migration execution and clean-database idempotency verification.
+       - Zero-placeholder invariant verification (`git grep -InE "TODO|FIXME|not implemented"`).
+       - Workspace typechecking and linting.
+       - Route parity audit (`scripts/route-audit.mjs`).
+       - Full unit/integration tests and ACID concurrency trials.
+       - Cross-platform Playwright E2E execution on both `chromium` (desktop) and `Pixel 5` (mobile).
+    2. **Container Build Verification (`build-containers`)**:
+       - Multi-stage Docker image builds for both `apps/api` and `apps/web`.
+    3. **Production Release Gate (`deploy-production`)**:
+       - Enforces manual approval gate via GitHub `production` environment.
+       - Strict release ordering:
+         1. Isolated database migration execution using PostgreSQL advisory lock.
+         2. API deployment triggering.
+         3. Deep `/readyz` readiness probe with 180s timeout; halts deployment on failure.
+         4. Web SPA deployment to Cloudflare Pages.
+         5. Automated post-deployment smoke verification (`scripts/smoke-prod.mjs`).
+  - Documented all required GitHub Environment secrets: `DATABASE_URL`, `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY`, `CLERK_WEBHOOK_SECRET`, `MAGIC_LINK_SECRET`, `OD_SEAL_SECRET`, `PUBLIC_WEB_URL`, `PUBLIC_API_URL`, `RENDER_DEPLOY_HOOK_URL`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
+- [ ] **Phase 7: Final Gate & Release Approval**
 - [ ] **Phase 7: Final Gate & Release Approval**
