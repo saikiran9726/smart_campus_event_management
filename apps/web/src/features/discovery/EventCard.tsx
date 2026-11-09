@@ -25,6 +25,9 @@ export interface EventCardData {
   minTeamSize?: number;
   maxTeamSize?: number;
   isCompetition?: boolean;
+  isPast?: boolean;
+  averageRating?: number | null;
+  reviewCount?: number;
 }
 
 export const EventCard: React.FC<{ event: EventCardData; className?: string }> = ({
@@ -43,6 +46,10 @@ export const EventCard: React.FC<{ event: EventCardData; className?: string }> =
     minute: '2-digit',
   });
 
+  const isPast = Boolean(
+    event.isPast ||
+    (event.endAt && new Date() > new Date(event.endAt))
+  );
   const isFree = !event.pricePaise || event.pricePaise === 0;
   const priceText = isFree ? 'Free' : `₹${(event.pricePaise! / 100).toFixed(0)}`;
   const isSoldOut = remaining <= 0;
@@ -98,14 +105,23 @@ export const EventCard: React.FC<{ event: EventCardData; className?: string }> =
         </div>
 
         <div className="absolute top-2.5 right-2.5">
-          <span
-            className={cn(
-              'px-2.5 py-0.5 rounded text-xs font-bold tnum shadow-sm select-none',
-              isFree ? 'bg-emerald-700 text-white' : 'bg-teal-700 text-white'
-            )}
-          >
-            {priceText}
-          </span>
+          {isPast ? (
+            <span
+              data-testid="completed-badge"
+              className="px-2.5 py-0.5 rounded text-xs font-bold bg-stone-900/90 text-stone-100 shadow-sm border border-stone-700/80 select-none"
+            >
+              Completed
+            </span>
+          ) : (
+            <span
+              className={cn(
+                'px-2.5 py-0.5 rounded text-xs font-bold tnum shadow-sm select-none',
+                isFree ? 'bg-emerald-700 text-white' : 'bg-teal-700 text-white'
+              )}
+            >
+              {priceText}
+            </span>
+          )}
         </div>
       </Link>
 
@@ -133,24 +149,44 @@ export const EventCard: React.FC<{ event: EventCardData; className?: string }> =
 
         {/* Footer Chips */}
         <div className="pt-2 border-t border-stone-100 dark:border-stone-800/80 flex items-center justify-between text-xs">
-          <div className="flex items-center gap-1.5 text-stone-600 dark:text-stone-400 truncate">
-            {event.venue && (
-              <span className="flex items-center gap-1 truncate max-w-[140px]">
-                <MapPin className="h-3 w-3 text-stone-400 shrink-0 stroke-[1.75]" />
-                <span className="truncate">{event.venue}</span>
+          {isPast ? (
+            <>
+              <div className="flex items-center gap-1.5 truncate">
+                {event.averageRating !== null && event.averageRating !== undefined && event.reviewCount && event.reviewCount > 0 ? (
+                  <span className="flex items-center gap-1 text-xs font-semibold text-amber-600 dark:text-amber-400">
+                    <span>★ {event.averageRating.toFixed(1)}</span>
+                    <span className="text-[11px] text-stone-500 font-normal">({event.reviewCount})</span>
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-stone-400 font-medium">No reviews yet</span>
+                )}
+              </div>
+              <span className="text-xs font-semibold text-teal-700 dark:text-teal-400 group-hover:underline inline-flex items-center gap-1">
+                View event and reviews &rarr;
               </span>
-            )}
-          </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-1.5 text-stone-600 dark:text-stone-400 truncate">
+                {event.venue && (
+                  <span className="flex items-center gap-1 truncate max-w-[140px]">
+                    <MapPin className="h-3 w-3 text-stone-400 shrink-0 stroke-[1.75]" />
+                    <span className="truncate">{event.venue}</span>
+                  </span>
+                )}
+              </div>
 
-          <div>
-            {isSoldOut ? (
-              <Badge variant="danger" size="sm">Sold Out</Badge>
-            ) : remaining < 15 ? (
-              <Badge variant="warning" size="sm" leftDot>Only {remaining} left</Badge>
-            ) : (
-              <Badge variant="success" size="sm" leftDot>{remaining} seats</Badge>
-            )}
-          </div>
+              <div>
+                {isSoldOut ? (
+                  <Badge variant="danger" size="sm">Sold Out</Badge>
+                ) : remaining < 15 ? (
+                  <Badge variant="warning" size="sm" leftDot>Only {remaining} left</Badge>
+                ) : (
+                  <Badge variant="success" size="sm" leftDot>{remaining} seats</Badge>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </Card>

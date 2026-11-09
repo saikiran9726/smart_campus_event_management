@@ -2,7 +2,7 @@ import { and, asc, desc, eq, gt, gte, inArray, lte, sql } from 'drizzle-orm';
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { DEFAULT_PROJECT_SUBMISSION_CONFIG, EventStatus, ProjectSubmissionConfig, UserRole } from '@eventora/shared';
 import { db } from '../../db/client';
-import { clubs, events, registrations, teams, tickets, users, venues, waitlistEntries, winners } from '../../db/schema';
+import { clubs, events, registrations, reviews, teams, tickets, users, venues, waitlistEntries, winners } from '../../db/schema';
 import { AppError } from '../../lib/app-error';
 import { requireClubRole, requireEventOrganizer } from '../../middleware/rbac';
 import { optionalAuth, requireAuth } from '../../plugins/auth';
@@ -310,17 +310,34 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
       to?: string;
       cursor?: string;
       limit?: string;
+      timeframe?: string;
     };
 
     const limit = Math.min(parseInt(query.limit || '20', 10), 100);
+    const timeframe = (query.timeframe || 'upcoming').toLowerCase();
+    const isDesc = timeframe === 'past' || timeframe === 'all';
+    const now = new Date();
 
-    // Public discovery only lists events students can actually act on:
-    // published/live, and not yet finished. Drafts, cancelled and ended events are hidden
-    // (they remain reachable by direct link and via the organizer/passport views).
-    const conditions = [
-      inArray(events.status, [EventStatus.PUBLISHED, EventStatus.LIVE]),
-      gt(events.endAt, new Date()),
-    ];
+    // Public discovery only lists events that are published, live, or completed (for past/all archive).
+    // Drafts and cancelled events are hidden.
+    const conditions = [];
+
+    if (timeframe === 'past') {
+      conditions.push(
+        inArray(events.status, [EventStatus.PUBLISHED, EventStatus.LIVE, EventStatus.COMPLETED]),
+        sql`(${events.endAt} <= ${now} OR ${events.status} = ${EventStatus.COMPLETED})`
+      );
+    } else if (timeframe === 'all') {
+      conditions.push(
+        inArray(events.status, [EventStatus.PUBLISHED, EventStatus.LIVE, EventStatus.COMPLETED])
+      );
+    } else {
+      // Default: upcoming (ongoing or future)
+      conditions.push(
+        inArray(events.status, [EventStatus.PUBLISHED, EventStatus.LIVE]),
+        gt(events.endAt, now)
+      );
+    }
 
     // The Discover page sends `search`; `q` is kept for existing callers.
     const searchText = query.q ?? query.search;
@@ -355,14 +372,25 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
     }
 
     // Keyset pagination: cursor is formatted as `${startAt.toISOString()}_${id}`
+    // For upcoming: ascending order (startAt, id) > (cursorTime, cursorId)
+    // For past/all: descending order (startAt, id) < (cursorTime, cursorId)
     if (query.cursor) {
       const [cursorTime, cursorId] = query.cursor.split('_');
       if (cursorTime && cursorId) {
-        conditions.push(
-          sql`(${events.startAt}, ${events.id}) > (${new Date(cursorTime)}, ${cursorId}::uuid)`
-        );
+        const cursorDate = new Date(cursorTime);
+        if (!isNaN(cursorDate.getTime())) {
+          conditions.push(
+            isDesc
+              ? sql`(${events.startAt}, ${events.id}) < (${cursorDate}, ${cursorId}::uuid)`
+              : sql`(${events.startAt}, ${events.id}) > (${cursorDate}, ${cursorId}::uuid)`
+          );
+        }
       }
     }
+
+    const orderBys = isDesc
+      ? [desc(events.startAt), desc(events.id)]
+      : [asc(events.startAt), asc(events.id)];
 
     const rows = await db
       .select({
@@ -395,7 +423,7 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
       .leftJoin(clubs, eq(events.clubId, clubs.id))
       .leftJoin(venues, eq(events.venueId, venues.id))
       .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(asc(events.startAt), asc(events.id))
+      .orderBy(...orderBys)
       .limit(limit + 1);
 
     const hasMore = rows.length > limit;
@@ -407,11 +435,40 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
         ? `${lastItem.startAt.toISOString()}_${lastItem.id}`
         : null;
 
-    const enrichedItems = items.map((ev) => ({
-      ...ev,
-      posterUrl: ev.posterKey ? publicUrl(ev.posterKey) : null,
-      seatLabel: computeSeatLabel(ev.remainingCapacity),
-    }));
+    // Fetch review ratings aggregates for the returned events
+    const eventIds = items.map((ev) => ev.id);
+    const ratingsMap = new Map<string, { averageRating: number; reviewCount: number }>();
+    if (eventIds.length > 0) {
+      const ratings = await db
+        .select({
+          eventId: reviews.eventId,
+          avgRating: sql<number>`round(avg(${reviews.stars})::numeric, 1)::float`,
+          reviewCount: sql<number>`count(${reviews.id})::int`,
+        })
+        .from(reviews)
+        .where(inArray(reviews.eventId, eventIds))
+        .groupBy(reviews.eventId);
+
+      for (const r of ratings) {
+        ratingsMap.set(r.eventId, {
+          averageRating: Number(r.avgRating),
+          reviewCount: Number(r.reviewCount),
+        });
+      }
+    }
+
+    const enrichedItems = items.map((ev) => {
+      const isPast = ev.endAt <= now || ev.status === EventStatus.COMPLETED;
+      const rating = ratingsMap.get(ev.id);
+      return {
+        ...ev,
+        isPast,
+        averageRating: rating ? rating.averageRating : null,
+        reviewCount: rating ? rating.reviewCount : 0,
+        posterUrl: ev.posterKey ? publicUrl(ev.posterKey) : null,
+        seatLabel: computeSeatLabel(ev.remainingCapacity),
+      };
+    });
     return reply.status(200).send({
       items: enrichedItems,
       nextCursor,
@@ -545,9 +602,22 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
         }
       }
 
+      const [reviewStats] = await db
+        .select({
+          avgRating: sql<number>`round(avg(${reviews.stars})::numeric, 1)::float`,
+          reviewCount: sql<number>`count(${reviews.id})::int`,
+        })
+        .from(reviews)
+        .where(eq(reviews.eventId, event.id));
+
+      const isPast = event.endAt <= new Date() || event.status === EventStatus.COMPLETED;
+
       return reply.status(200).send({
         event: {
           ...event,
+          isPast,
+          averageRating: reviewStats?.reviewCount ? Number(reviewStats.avgRating) : null,
+          reviewCount: Number(reviewStats?.reviewCount || 0),
           posterUrl: event.posterKey ? publicUrl(event.posterKey) : null,
           winners: eventWinners.map((w) => ({
             rank: w.rank,

@@ -88,6 +88,9 @@ export interface EventDetailData {
     count: number;
     histogram: Record<number, number>;
   };
+  isPast?: boolean;
+  averageRating?: number | null;
+  reviewCount?: number;
   winners?: WinnerItem[];
   userRegistration?: {
     id: string;
@@ -170,6 +173,19 @@ export const EventPage: React.FC = () => {
   };
 
   const resolveCta = (): CtaState => {
+    const isEventEnded = event?.endAt ? new Date() > new Date(event.endAt) : false;
+    const isCompleted = event?.status === 'COMPLETED' || isEventEnded;
+
+    if (isCompleted && (!userReg || userReg.status === 'CANCELLED' || userReg.status === 'EXPIRED')) {
+      return {
+        label: 'Event Completed',
+        onClick: () => {},
+        disabled: true,
+        className: 'bg-stone-300 dark:bg-stone-700 text-stone-600 dark:text-stone-300 cursor-not-allowed',
+        helperText: 'This event has concluded. Registrations are closed.',
+      };
+    }
+
     if (!userReg || userReg.status === 'CANCELLED' || userReg.status === 'EXPIRED') {
       if (isSoldOut) {
         return {
@@ -320,10 +336,21 @@ export const EventPage: React.FC = () => {
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <StatusBadge status={event?.status || 'PUBLISHED'} />
-              <SeatPill remaining={remainingSeats} capacity={capacity} />
+              {(event?.status === 'COMPLETED' || (event?.endAt && new Date() > new Date(event.endAt))) ? (
+                <span className="px-2.5 py-0.5 rounded-md text-xs font-bold bg-stone-800 text-stone-100 border border-stone-700 select-none">
+                  Completed
+                </span>
+              ) : (
+                <SeatPill remaining={remainingSeats} capacity={capacity} />
+              )}
               <span className="px-2.5 py-0.5 rounded-md text-xs font-semibold bg-muted text-foreground">
                 {event?.category || 'Hackathon'}
               </span>
+              {event?.averageRating && event.reviewCount && event.reviewCount > 0 ? (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 select-none">
+                  ★ {event.averageRating.toFixed(1)} ({event.reviewCount})
+                </span>
+              ) : null}
             </div>
 
             <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-foreground leading-tight">
