@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { AnalyticsPage } from '../features/organizer/AnalyticsPage';
 import { ErrorBoundary } from '../components/primitives/error-boundary';
+import { toast } from '../components/ui/use-toast';
 import { api } from '../lib/api';
 
 vi.mock('recharts', async () => {
@@ -180,7 +181,10 @@ describe('Area 4: NAAC Analytics Bug Fix & Club-Wide Dashboard UI', () => {
     expect(
       await screen.findByRole('heading', { name: /Club NAAC Accreditation & Analytics/i })
     ).toBeInTheDocument();
-    expect(screen.getByText('IEEE Student Branch')).toBeInTheDocument();
+
+    // Verify Club Filter Dropdown exists alongside Academic Year Filter
+    expect(screen.getByTestId('select-club-filter')).toBeInTheDocument();
+    expect(screen.getByTestId('select-academic-year')).toBeInTheDocument();
 
     // Wait for KPI Cards to load from async query
     expect(await screen.findByTestId('metric-events-count')).toHaveTextContent('4');
@@ -243,6 +247,44 @@ describe('Area 4: NAAC Analytics Bug Fix & Club-Wide Dashboard UI', () => {
     await waitFor(() => {
       expect(getBlobSpy).toHaveBeenCalledWith(
         expect.stringContaining('/clubs/club_naac_123/reports/naac?format=pdf')
+      );
+    });
+  });
+
+  it('displays error toast when NAAC export fails', async () => {
+    const mockClubNaac = {
+      club: { id: 'club_naac_123', name: 'IEEE', slug: 'ieee' },
+      academicYear: 'ALL',
+      eventsCount: 1,
+      totalRegistered: 10,
+      totalAttended: 9,
+      overallAttendanceRate: 90,
+      ratings: { averageEventRating: 5, averageClubRating: 5, reviewCount: 5 },
+      demographics: { buckets: [], suppressedCount: 0 },
+      events: [],
+    };
+
+    vi.spyOn(api, 'get').mockResolvedValue(mockClubNaac as any);
+    vi.spyOn(api, 'getBlob').mockRejectedValue(new Error('Network error generating report'));
+    const toastErrorSpy = vi.spyOn(toast, 'error');
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/organizer/analytics']}>
+          <Routes>
+            <Route path="/organizer/analytics" element={<AnalyticsPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    const exportBtn = await screen.findByTestId('btn-naac-export');
+    fireEvent.click(exportBtn);
+
+    await waitFor(() => {
+      expect(toastErrorSpy).toHaveBeenCalledWith(
+        'Export download failed',
+        expect.stringContaining('Network error generating report')
       );
     });
   });

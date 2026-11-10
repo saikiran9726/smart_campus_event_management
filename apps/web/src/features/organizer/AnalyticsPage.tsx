@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -139,8 +139,17 @@ const DONUT_COLORS = ['#0f766e', '#dc2626', '#d97706']; // Green, Red, Yellow
 export const AnalyticsPage: React.FC = () => {
   const { eventId } = useParams<{ eventId?: string }>();
   const navigate = useNavigate();
-  const { activeClubId, clubs, isLoading: isLoadingClubs } = useActiveClub();
-  const clubId = activeClubId;
+  const { activeClubId, clubs, setActiveClubId, isLoading: isLoadingClubs } = useActiveClub();
+  const [selectedClubId, setSelectedClubId] = useState<string>(activeClubId || '');
+
+  // Synchronize selectedClubId with activeClubId if initialized later
+  useEffect(() => {
+    if (!selectedClubId && activeClubId) {
+      setSelectedClubId(activeClubId);
+    }
+  }, [activeClubId, selectedClubId]);
+
+  const clubId = selectedClubId || activeClubId;
 
   // Academic Year State for Club-Wide View
   const [academicYear, setAcademicYear] = useState<string>('ALL');
@@ -281,12 +290,29 @@ export const AnalyticsPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Club Switcher & Academic Year Filter */}
+            {/* Club Filter & Academic Year Filter */}
             <div className="flex items-center gap-2 flex-wrap">
-              <ClubSwitcher />
+              <Select
+                value={clubId}
+                onValueChange={(val) => {
+                  setSelectedClubId(val);
+                  if (setActiveClubId) setActiveClubId(val);
+                }}
+              >
+                <SelectTrigger className="w-48 text-xs h-9 bg-background" data-testid="select-club-filter">
+                  <SelectValue placeholder={clubs.length === 0 ? 'No clubs joined' : 'Filter by Club'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {clubs.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
               <Select value={academicYear} onValueChange={setAcademicYear}>
-                <SelectTrigger className="w-32 text-xs h-9" data-testid="select-academic-year">
+                <SelectTrigger className="w-32 text-xs h-9 bg-background" data-testid="select-academic-year">
                   <SelectValue placeholder="Academic Year" />
                 </SelectTrigger>
                 <SelectContent>
