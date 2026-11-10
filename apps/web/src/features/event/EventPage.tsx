@@ -126,6 +126,18 @@ export const EventPage: React.FC = () => {
   const [isWaitlistModalOpen, setIsWaitlistModalOpen] = useState(false);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
 
+  // Fetch full event details
+  const { data: event, isLoading } = useQuery<EventDetailData>({
+    queryKey: ['events', slug, 'full'],
+    queryFn: async () => {
+      const res = await api.get<{ event: EventDetailData }>(`/events/${slug}`, {
+        showToast: false,
+      });
+      return res.event;
+    },
+    enabled: !!slug,
+  });
+
   const { data: reviewsData, refetch: refetchReviews } = useQuery({
     queryKey: ['events', slug, 'reviews'],
     queryFn: async () => {
@@ -140,19 +152,7 @@ export const EventPage: React.FC = () => {
         return null;
       }
     },
-    enabled: Boolean(slug),
-  });
-
-  // Fetch full event details
-  const { data: event, isLoading } = useQuery<EventDetailData>({
-    queryKey: ['events', slug, 'full'],
-    queryFn: async () => {
-      const res = await api.get<{ event: EventDetailData }>(`/events/${slug}`, {
-        showToast: false,
-      });
-      return res.event;
-    },
-    enabled: !!slug,
+    enabled: Boolean(slug && event),
   });
 
   // Real-time socket seats hook
