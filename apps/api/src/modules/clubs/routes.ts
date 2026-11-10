@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ilike, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, isNull, sql } from 'drizzle-orm';
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import {
   ChannelKind,
@@ -6,7 +6,7 @@ import {
   UserRole,
 } from '@eventora/shared';
 import { db } from '../../db/client';
-import { clubChannels, clubMembers, clubs, events, users } from '../../db/schema';
+import { clubChannels, clubMembers, clubs, events, reviews, users } from '../../db/schema';
 import { AppError } from '../../lib/app-error';
 import { requireClubRole, requireRole } from '../../middleware/rbac';
 import { requireAuth } from '../../plugins/auth';
@@ -142,7 +142,31 @@ export async function clubRoutes(server: FastifyInstance): Promise<void> {
       .orderBy(desc(clubs.createdAt))
       .limit(limit);
 
-    return reply.status(200).send({ items, clubs: items });
+    const itemsWithRatings = await Promise.all(
+      items.map(async (c) => {
+        const [r] = await db
+          .select({
+            avgRating: sql<number>`round(avg(${reviews.clubStars})::numeric, 1)::float`,
+            reviewCount: sql<number>`count(${reviews.id})::int`,
+          })
+          .from(reviews)
+          .innerJoin(events, eq(reviews.eventId, events.id))
+          .where(
+            and(
+              eq(events.clubId, c.id),
+              sql`${reviews.clubStars} IS NOT NULL`,
+              isNull(reviews.hiddenAt)
+            )
+          );
+        return {
+          ...c,
+          averageRating: r?.reviewCount ? Number(r.avgRating) : null,
+          reviewCount: Number(r?.reviewCount ?? 0),
+        };
+      })
+    );
+
+    return reply.status(200).send({ items: itemsWithRatings, clubs: itemsWithRatings });
   });
 
   // 3. Get My Clubs (Authenticated user's club memberships)
@@ -192,11 +216,12 @@ export async function clubRoutes(server: FastifyInstance): Promise<void> {
   // 4. Get Club by Slug
   server.get('/clubs/:slug', async (request: FastifyRequest, reply: FastifyReply) => {
     const { slug } = request.params as { slug: string };
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slug);
 
     const [club] = await db
       .select()
       .from(clubs)
-      .where(eq(clubs.slug, slug))
+      .where(isUuid ? eq(clubs.id, slug) : eq(clubs.slug, slug))
       .limit(1);
 
     if (!club) {
@@ -208,10 +233,27 @@ export async function clubRoutes(server: FastifyInstance): Promise<void> {
       .from(clubMembers)
       .where(eq(clubMembers.clubId, club.id));
 
+    const [ratingsRes] = await db
+      .select({
+        avgRating: sql<number>`round(avg(${reviews.clubStars})::numeric, 1)::float`,
+        reviewCount: sql<number>`count(${reviews.id})::int`,
+      })
+      .from(reviews)
+      .innerJoin(events, eq(reviews.eventId, events.id))
+      .where(
+        and(
+          eq(events.clubId, club.id),
+          sql`${reviews.clubStars} IS NOT NULL`,
+          isNull(reviews.hiddenAt)
+        )
+      );
+
     return reply.status(200).send({
       club: {
         ...club,
         memberCount: Number(memberCountRes?.count ?? 0),
+        averageRating: ratingsRes?.reviewCount ? Number(ratingsRes.avgRating) : null,
+        reviewCount: Number(ratingsRes?.reviewCount ?? 0),
       },
     });
   });

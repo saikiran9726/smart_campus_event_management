@@ -613,10 +613,54 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
 
       const isPast = event.endAt <= new Date() || event.status === EventStatus.COMPLETED;
 
+      // Host Club Information with club rating & review count
+      let clubInfo: any = null;
+      if (event.clubId) {
+        const [clubRow] = await db
+          .select({
+            id: clubs.id,
+            name: clubs.name,
+            slug: clubs.slug,
+            description: clubs.description,
+            logoKey: clubs.logoKey,
+          })
+          .from(clubs)
+          .where(eq(clubs.id, event.clubId))
+          .limit(1);
+
+        if (clubRow) {
+          const [clubRatings] = await db
+            .select({
+              avgRating: sql<number>`round(avg(${reviews.clubStars})::numeric, 1)::float`,
+              reviewCount: sql<number>`count(${reviews.id})::int`,
+            })
+            .from(reviews)
+            .innerJoin(events, eq(reviews.eventId, events.id))
+            .where(
+              and(
+                eq(events.clubId, event.clubId),
+                sql`${reviews.clubStars} IS NOT NULL`,
+                isNull(reviews.hiddenAt)
+              )
+            );
+
+          clubInfo = {
+            id: clubRow.id,
+            name: clubRow.name,
+            slug: clubRow.slug,
+            description: clubRow.description,
+            logoUrl: clubRow.logoKey ? publicUrl(clubRow.logoKey) : null,
+            averageRating: clubRatings?.reviewCount ? Number(clubRatings.avgRating) : null,
+            reviewCount: Number(clubRatings?.reviewCount ?? 0),
+          };
+        }
+      }
+
       return reply.status(200).send({
         event: {
           ...event,
           isPast,
+          club: clubInfo,
           averageRating: reviewStats?.reviewCount ? Number(reviewStats.avgRating) : null,
           reviewCount: Number(reviewStats?.reviewCount || 0),
           posterUrl: event.posterKey ? publicUrl(event.posterKey) : null,

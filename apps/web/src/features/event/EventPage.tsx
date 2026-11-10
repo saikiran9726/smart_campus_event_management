@@ -48,6 +48,7 @@ import {
   QrCode,
   AlertTriangle,
   ArrowRight,
+  Star,
 } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
@@ -79,9 +80,12 @@ export interface EventDetailData {
   club: {
     id: string;
     name: string;
+    slug?: string;
     description?: string;
     logoUrl?: string;
     leadName?: string;
+    averageRating?: number | null;
+    reviewCount?: number;
   };
   agenda?: Array<{ time?: string; title: string; speaker?: string; speakerOrLocation?: string }>;
   reviews?: {
@@ -419,21 +423,50 @@ export const EventPage: React.FC = () => {
               <div className="h-14 w-14 rounded-xl bg-primary/10 flex items-center justify-center text-xl font-extrabold text-primary shrink-0">
                 {event.club.name[0]}
               </div>
-              <div className="space-y-1 text-center sm:text-left flex-1">
-                <div className="flex items-center justify-center sm:justify-start gap-2">
-                  <h4 className="font-bold text-base text-foreground">{event.club.name}</h4>
+              <div className="space-y-1.5 text-center sm:text-left flex-1">
+                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                  <Link
+                    to={`/clubs/${event.club.slug || event.club.id}`}
+                    className="font-bold text-base text-foreground hover:text-teal-700 dark:hover:text-teal-400 transition-colors"
+                  >
+                    {event.club.name}
+                  </Link>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-muted text-muted-foreground uppercase">
                     Host Club
                   </span>
                 </div>
+
+                {/* Club Rating Preview */}
+                {event.club.averageRating !== null && event.club.averageRating !== undefined && event.club.reviewCount && event.club.reviewCount > 0 ? (
+                  <div className="flex items-center justify-center sm:justify-start gap-1.5 text-xs text-amber-600 dark:text-amber-400 font-semibold" data-testid="host-club-rating">
+                    <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500 stroke-[1.5]" />
+                    <span>{event.club.averageRating.toFixed(1)}</span>
+                    <span className="text-[11px] text-muted-foreground font-normal">
+                      ({event.club.reviewCount} {event.club.reviewCount === 1 ? 'review' : 'reviews'})
+                    </span>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">No club reviews yet</p>
+                )}
+
                 <p className="text-xs text-muted-foreground leading-relaxed">
                   {event.club.description}
                 </p>
                 {event.club.leadName && (
-                  <p className="text-xs font-medium text-foreground pt-1">
+                  <p className="text-xs font-medium text-foreground pt-0.5">
                     Coordinator: {event.club.leadName}
                   </p>
                 )}
+
+                <div className="pt-1">
+                  <Link
+                    to={`/clubs/${event.club.slug || event.club.id}`}
+                    className="text-xs font-semibold text-teal-700 dark:text-teal-400 hover:underline inline-flex items-center gap-1"
+                  >
+                    <span>View Club & Public Reviews</span>
+                    <span>&rarr;</span>
+                  </Link>
+                </div>
               </div>
             </Card>
           )}

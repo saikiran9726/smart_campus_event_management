@@ -9,6 +9,7 @@ import { ActiveClubProvider } from '@/features/organizer/ActiveClubContext';
 // Full Feature Implementations
 const DiscoverPage = lazy(() => import('@/features/discovery/DiscoveryPage'));
 const EventDetailPage = lazy(() => import('@/features/event/EventPage'));
+const ClubPage = lazy(() => import('@/features/clubs/ClubPage'));
 const VerifyCertPage = lazy(() => import('@/features/verify/VerifyCertPage'));
 const VerifyOdPage = lazy(() => import('@/features/verify/VerifyOdPage'));
 const FacultyDecisionPage = lazy(() => import('@/features/faculty/FacultyDecisionPage'));
@@ -62,6 +63,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="/" element={<DiscoverPage />} />
           <Route path="/events/:slug" element={<EventDetailPage />} />
           <Route path="/events/:slug/doubts" element={<EventDoubtRoomPage />} />
+          <Route path="/clubs/:slug" element={<ClubPage />} />
           <Route path="/verify/cert/:id" element={<VerifyCertPage />} />
           <Route path="/verify/od/:serial" element={<VerifyOdPage />} />
           <Route path="/faculty/decision" element={<FacultyDecisionPage />} />
