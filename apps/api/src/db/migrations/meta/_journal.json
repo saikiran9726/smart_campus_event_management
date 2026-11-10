@@ -134,6 +134,13 @@
       "when": 1793378000000,
       "tag": "0018_notification_delivery_and_preferences",
       "breakpoints": false
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793379000000,
+      "tag": "0019_event_and_club_ratings_moderation",
+      "breakpoints": false
     }
   ]
 }

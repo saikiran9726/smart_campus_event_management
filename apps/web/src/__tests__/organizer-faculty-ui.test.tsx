@@ -455,7 +455,7 @@ describe('Organizer & Faculty UI Suite (Prompt 15)', () => {
 
   describe('5. Post-Mortem Analytics: Demographics Privacy Suppression & NAAC Export URL', () => {
     it('renders demographics with "Fewer than 3" suppression and triggers correct export URL', async () => {
-      const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+      const getBlobSpy = vi.spyOn(api, 'getBlob').mockResolvedValue(new Blob(['fake-pdf'], { type: 'application/pdf' }));
 
       // Provide clubs/me so ActiveClubProvider has an active club
       vi.spyOn(api, 'get').mockImplementation(async (url: string) => {
@@ -504,9 +504,8 @@ describe('Organizer & Faculty UI Suite (Prompt 15)', () => {
       fireEvent.click(exportBtn);
 
       await waitFor(() => {
-        expect(openSpy).toHaveBeenCalledWith(
-          expect.stringContaining('/reports/naac?format=pdf'),
-          '_blank'
+        expect(getBlobSpy).toHaveBeenCalledWith(
+          expect.stringContaining('/reports/naac?format=pdf')
         );
       });
     });

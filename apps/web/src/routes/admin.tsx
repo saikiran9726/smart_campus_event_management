@@ -1420,4 +1420,148 @@ export const AdminPage: React.FC = () => {
   );
 };
 
+
+interface ReportedReviewItem {
+  reportId: string;
+  reviewId: string;
+  eventId: string;
+  eventTitle: string;
+  stars: number;
+  comment?: string | null;
+  clubStars?: number | null;
+  clubComment?: string | null;
+  hiddenAt?: string | null;
+  authorId: string;
+  authorName: string;
+  reason: string;
+  reportedAt: string;
+}
+
+const AdminModerationPanel: React.FC = () => {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { data, isLoading, refetch } = useQuery<{ reports: ReportedReviewItem[] }>({
+    queryKey: ['admin', 'reviews', 'reported'],
+    queryFn: async () => {
+      const res = await api.get<{ reports: ReportedReviewItem[] }>('/admin/reviews/reported', {
+        showToast: false,
+      });
+      return res;
+    },
+  });
+
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  const handleToggleHide = async (reviewId: string, currentHidden: boolean) => {
+    setTogglingId(reviewId);
+    try {
+      await api.patch(`/admin/reviews/${reviewId}/hide`, {
+        hidden: !currentHidden,
+      });
+      toast({
+        title: !currentHidden ? 'Review Hidden' : 'Review Restored',
+        description: !currentHidden
+          ? 'Review is now hidden from public view.'
+          : 'Review has been restored to public view.',
+      });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'reviews', 'reported'] });
+      refetch();
+    } catch (err: any) {
+      toast({
+        title: 'Action Failed',
+        description: err?.message || 'Failed to update review moderation status.',
+        variant: 'destructive',
+      });
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
+  const reports = data?.reports || [];
+
+  return (
+    <div className="space-y-4" data-testid="admin-moderation-panel">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-heading text-lg font-bold">Reported Reviews Moderation</h3>
+          <p className="text-xs text-muted-foreground">
+            Review user reports on comments, and hide or unhide reviews from public event listings and metrics.
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => refetch()} className="text-xs">
+          Refresh
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <Card className="p-8 text-center text-muted-foreground text-sm">
+          Loading reported reviews...
+        </Card>
+      ) : reports.length === 0 ? (
+        <Card className="p-8 text-center space-y-2">
+          <p className="text-sm font-semibold text-foreground">Zero Reported Reviews</p>
+          <p className="text-xs text-muted-foreground">
+            No reviews have been flagged for abusive or inappropriate content.
+          </p>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {reports.map((r) => {
+            const isHidden = Boolean(r.hiddenAt);
+            return (
+              <Card key={r.reportId} className="p-4 border-border space-y-3 text-left">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-sm text-foreground">{r.eventTitle}</span>
+                    <span className="text-xs text-muted-foreground">• by {r.authorName}</span>
+                    {isHidden ? (
+                      <Badge variant="destructive" className="text-[10px]">
+                        Hidden
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary" className="text-[10px]">
+                        Active Public
+                      </Badge>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant={isHidden ? 'outline' : 'destructive'}
+                    disabled={togglingId === r.reviewId}
+                    onClick={() => handleToggleHide(r.reviewId, isHidden)}
+                    className="text-xs h-7 self-start sm:self-auto"
+                  >
+                    {togglingId === r.reviewId
+                      ? 'Updating...'
+                      : isHidden
+                      ? 'Restore / Unhide'
+                      : 'Hide Review'}
+                  </Button>
+                </div>
+
+                <div className="p-2.5 rounded bg-muted/40 border border-border/40 text-xs space-y-1">
+                  <div className="flex items-center gap-2 text-amber-500 font-semibold">
+                    <span>Event: ★ {r.stars}</span>
+                    {r.clubStars && <span>• Club: ★ {r.clubStars}</span>}
+                  </div>
+                  {r.comment && <p className="text-muted-foreground italic">&quot;{r.comment}&quot;</p>}
+                  {r.clubComment && <p className="text-muted-foreground italic">&quot;Club: {r.clubComment}&quot;</p>}
+                </div>
+
+                <div className="text-xs bg-amber-500/10 border border-amber-500/20 rounded p-2 text-amber-800 dark:text-amber-200">
+                  <span className="font-bold">Flagged Reason: </span>
+                  <span>{r.reason}</span>
+                  <span className="text-[11px] text-muted-foreground ml-2">
+                    ({new Date(r.reportedAt).toLocaleDateString()})
+                  </span>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export default AdminPage;

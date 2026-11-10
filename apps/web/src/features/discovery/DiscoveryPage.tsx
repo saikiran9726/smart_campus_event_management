@@ -60,6 +60,7 @@ export const DiscoveryPage: React.FC = () => {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [selectedDateFilter, setSelectedDateFilter] = useState<string>('all');
+  const [selectedTimeframe, setSelectedTimeframe] = useState<'upcoming' | 'past' | 'all'>('upcoming');
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
 
   // 300ms Debounce search input
@@ -75,6 +76,7 @@ export const DiscoveryPage: React.FC = () => {
     setDebouncedSearch('');
     setSelectedCategory('All');
     setSelectedDateFilter('all');
+    setSelectedTimeframe('upcoming');
     setIsFilterSheetOpen(false);
   };
 
@@ -122,13 +124,14 @@ export const DiscoveryPage: React.FC = () => {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ['events', 'infinite', debouncedSearch, selectedCategory, selectedDateFilter],
+    queryKey: ['events', 'infinite', debouncedSearch, selectedCategory, selectedDateFilter, selectedTimeframe],
     initialPageParam: null as string | null,
     queryFn: async ({ pageParam }) => {
       const params = new URLSearchParams();
       if (debouncedSearch) params.set('search', debouncedSearch);
       if (selectedCategory !== 'All') params.set('category', selectedCategory);
       if (selectedDateFilter !== 'all') params.set('dateFilter', selectedDateFilter);
+      if (selectedTimeframe) params.set('timeframe', selectedTimeframe);
       if (pageParam) params.set('cursor', pageParam);
       params.set('limit', '9');
 
@@ -157,6 +160,9 @@ export const DiscoveryPage: React.FC = () => {
         minTeamSize: item.minTeamSize,
         maxTeamSize: item.maxTeamSize,
         isCompetition: item.isCompetition,
+        isPast: item.isPast ?? (item.endAt ? new Date() > new Date(item.endAt) : false),
+        averageRating: item.averageRating ?? null,
+        reviewCount: item.reviewCount ?? 0,
       }));
       return {
         events: list,
@@ -275,18 +281,52 @@ export const DiscoveryPage: React.FC = () => {
 
       {/* 3. Search & Filter Bar */}
       <section className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h2 className="font-heading text-xl font-bold text-stone-900 dark:text-stone-100">
-              Upcoming Events
+              {selectedTimeframe === 'upcoming'
+                ? 'Upcoming Events'
+                : selectedTimeframe === 'past'
+                ? 'Past Events'
+                : 'All Campus Events'}
             </h2>
-            <p className="text-xs text-stone-500">Live listings with real-time seat tracking</p>
+            <p className="text-xs text-stone-500">
+              {selectedTimeframe === 'upcoming'
+                ? 'Live listings with real-time seat tracking'
+                : selectedTimeframe === 'past'
+                ? 'Concluded events, ratings, and student reviews'
+                : 'Browse all campus events across terms'}
+            </p>
           </div>
-          {hasActiveFilters && (
-            <Button variant="ghost" size="sm" onClick={resetFilters} leftIcon={<RotateCcw className="h-3.5 w-3.5" />}>
-              Clear All Filters
-            </Button>
-          )}
+
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            {/* Timeframe Segmented Control (Upcoming | Past | All) */}
+            <div
+              data-testid="timeframe-segmented-control"
+              className="inline-flex items-center p-1 rounded-lg bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700/60"
+            >
+              {(['upcoming', 'past', 'all'] as const).map((tf) => (
+                <button
+                  key={tf}
+                  onClick={() => setSelectedTimeframe(tf)}
+                  className={cn(
+                    'px-3.5 py-1.5 rounded-md text-xs font-semibold capitalize transition-all focus-ring',
+                    selectedTimeframe === tf
+                      ? 'bg-white dark:bg-stone-900 text-teal-700 dark:text-teal-400 shadow-sm'
+                      : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200'
+                  )}
+                >
+                  {tf === 'upcoming' ? 'Upcoming' : tf === 'past' ? 'Past' : 'All'}
+                </button>
+              ))}
+            </div>
+
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" onClick={resetFilters} leftIcon={<RotateCcw className="h-3.5 w-3.5" />}>
+                Clear
+              </Button>
+            )}
+          </div>
         </div>
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
@@ -409,6 +449,10 @@ export const DiscoveryPage: React.FC = () => {
             description={
               hasActiveFilters
                 ? 'No campus events matched your current search and filter criteria.'
+                : selectedTimeframe === 'past'
+                ? 'There are currently no concluded campus events.'
+                : selectedTimeframe === 'all'
+                ? 'No campus events found across any time period.'
                 : 'There are currently no upcoming events published on campus.'
             }
             actionLabel={hasActiveFilters ? 'Reset Filters' : undefined}

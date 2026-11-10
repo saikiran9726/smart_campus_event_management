@@ -24,6 +24,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { ReviewsSummary } from './ReviewsSummary';
+import { ReviewFormModal } from './ReviewFormModal';
 import { ResourceVaultTeaser } from './ResourceVaultTeaser';
 import { ProjectSubmissionConfig } from '@eventora/shared';
 import { WinnersPodium, WinnerItem } from './WinnersPodium';
@@ -47,6 +48,7 @@ import {
   QrCode,
   AlertTriangle,
   ArrowRight,
+  Star,
 } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
@@ -78,9 +80,12 @@ export interface EventDetailData {
   club: {
     id: string;
     name: string;
+    slug?: string;
     description?: string;
     logoUrl?: string;
     leadName?: string;
+    averageRating?: number | null;
+    reviewCount?: number;
   };
   agenda?: Array<{ time?: string; title: string; speaker?: string; speakerOrLocation?: string }>;
   reviews?: {
@@ -88,6 +93,9 @@ export interface EventDetailData {
     count: number;
     histogram: Record<number, number>;
   };
+  isPast?: boolean;
+  averageRating?: number | null;
+  reviewCount?: number;
   winners?: WinnerItem[];
   userRegistration?: {
     id: string;
@@ -116,6 +124,7 @@ export const EventPage: React.FC = () => {
   const [isTicketOpen, setIsTicketOpen] = useState(false);
   const [isPendingPaymentOpen, setIsPendingPaymentOpen] = useState(false);
   const [isWaitlistModalOpen, setIsWaitlistModalOpen] = useState(false);
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
 
   // Fetch full event details
   const { data: event, isLoading } = useQuery<EventDetailData>({
@@ -127,6 +136,23 @@ export const EventPage: React.FC = () => {
       return res.event;
     },
     enabled: !!slug,
+  });
+
+  const { data: reviewsData, refetch: refetchReviews } = useQuery({
+    queryKey: ['events', slug, 'reviews'],
+    queryFn: async () => {
+      try {
+        return await api.get<{
+          average: number;
+          count: number;
+          histogram: Record<number, number>;
+          reviews: any[];
+        }>(`/public/events/${slug}/reviews`, { showToast: false });
+      } catch {
+        return null;
+      }
+    },
+    enabled: Boolean(slug && event),
   });
 
   // Real-time socket seats hook
@@ -170,6 +196,19 @@ export const EventPage: React.FC = () => {
   };
 
   const resolveCta = (): CtaState => {
+    const isEventEnded = event?.endAt ? new Date() > new Date(event.endAt) : false;
+    const isCompleted = event?.status === 'COMPLETED' || isEventEnded;
+
+    if (isCompleted && (!userReg || userReg.status === 'CANCELLED' || userReg.status === 'EXPIRED')) {
+      return {
+        label: 'Event Completed',
+        onClick: () => {},
+        disabled: true,
+        className: 'bg-stone-300 dark:bg-stone-700 text-stone-600 dark:text-stone-300 cursor-not-allowed',
+        helperText: 'This event has concluded. Registrations are closed.',
+      };
+    }
+
     if (!userReg || userReg.status === 'CANCELLED' || userReg.status === 'EXPIRED') {
       if (isSoldOut) {
         return {
@@ -320,10 +359,21 @@ export const EventPage: React.FC = () => {
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <StatusBadge status={event?.status || 'PUBLISHED'} />
-              <SeatPill remaining={remainingSeats} capacity={capacity} />
+              {(event?.status === 'COMPLETED' || (event?.endAt && new Date() > new Date(event.endAt))) ? (
+                <span className="px-2.5 py-0.5 rounded-md text-xs font-bold bg-stone-800 text-stone-100 border border-stone-700 select-none">
+                  Completed
+                </span>
+              ) : (
+                <SeatPill remaining={remainingSeats} capacity={capacity} />
+              )}
               <span className="px-2.5 py-0.5 rounded-md text-xs font-semibold bg-muted text-foreground">
                 {event?.category || 'Hackathon'}
               </span>
+              {event?.averageRating && event.reviewCount && event.reviewCount > 0 ? (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 select-none">
+                  ★ {event.averageRating.toFixed(1)} ({event.reviewCount})
+                </span>
+              ) : null}
             </div>
 
             <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-foreground leading-tight">
@@ -373,21 +423,50 @@ export const EventPage: React.FC = () => {
               <div className="h-14 w-14 rounded-xl bg-primary/10 flex items-center justify-center text-xl font-extrabold text-primary shrink-0">
                 {event.club.name[0]}
               </div>
-              <div className="space-y-1 text-center sm:text-left flex-1">
-                <div className="flex items-center justify-center sm:justify-start gap-2">
-                  <h4 className="font-bold text-base text-foreground">{event.club.name}</h4>
+              <div className="space-y-1.5 text-center sm:text-left flex-1">
+                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                  <Link
+                    to={`/clubs/${event.club.slug || event.club.id}`}
+                    className="font-bold text-base text-foreground hover:text-teal-700 dark:hover:text-teal-400 transition-colors"
+                  >
+                    {event.club.name}
+                  </Link>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-muted text-muted-foreground uppercase">
                     Host Club
                   </span>
                 </div>
+
+                {/* Club Rating Preview */}
+                {event.club.averageRating !== null && event.club.averageRating !== undefined && event.club.reviewCount && event.club.reviewCount > 0 ? (
+                  <div className="flex items-center justify-center sm:justify-start gap-1.5 text-xs text-amber-600 dark:text-amber-400 font-semibold" data-testid="host-club-rating">
+                    <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500 stroke-[1.5]" />
+                    <span>{event.club.averageRating.toFixed(1)}</span>
+                    <span className="text-[11px] text-muted-foreground font-normal">
+                      ({event.club.reviewCount} {event.club.reviewCount === 1 ? 'review' : 'reviews'})
+                    </span>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">No club reviews yet</p>
+                )}
+
                 <p className="text-xs text-muted-foreground leading-relaxed">
                   {event.club.description}
                 </p>
                 {event.club.leadName && (
-                  <p className="text-xs font-medium text-foreground pt-1">
+                  <p className="text-xs font-medium text-foreground pt-0.5">
                     Coordinator: {event.club.leadName}
                   </p>
                 )}
+
+                <div className="pt-1">
+                  <Link
+                    to={`/clubs/${event.club.slug || event.club.id}`}
+                    className="text-xs font-semibold text-teal-700 dark:text-teal-400 hover:underline inline-flex items-center gap-1"
+                  >
+                    <span>View Club & Public Reviews</span>
+                    <span>&rarr;</span>
+                  </Link>
+                </div>
               </div>
             </Card>
           )}
@@ -408,13 +487,17 @@ export const EventPage: React.FC = () => {
           <ResourceVaultTeaser />
 
           {/* Reviews Summary */}
-          {event?.reviews && (
-            <ReviewsSummary
-              average={event.reviews.average}
-              count={event.reviews.count}
-              histogram={event.reviews.histogram}
-            />
-          )}
+          <ReviewsSummary
+            average={reviewsData?.average ?? event?.averageRating ?? event?.reviews?.average ?? 0}
+            count={reviewsData?.count ?? event?.reviewCount ?? event?.reviews?.count ?? 0}
+            histogram={reviewsData?.histogram ?? event?.reviews?.histogram ?? { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }}
+            reviews={reviewsData?.reviews ?? []}
+            canReview={Boolean(
+              userReg?.ticket?.checkedInAt &&
+              (event?.isPast || (event?.endAt && new Date() > new Date(event.endAt)) || event?.status === 'COMPLETED')
+            )}
+            onOpenReviewModal={() => setIsReviewModalOpen(true)}
+          />
 
           {/* Winners Podium for competitions */}
           {event?.winners && event.winners.length > 0 && (

@@ -788,3 +788,167 @@ export async function verifyAccreditationReport(serial: string) {
     generatedAt: report.createdAt.toISOString(),
   };
 }
+
+/**
+ * Retrieves aggregate NAAC analytics and metrics across all events of a club,
+ * optionally filtered by academic year, with cohort suppression (< 3).
+ */
+export async function getClubNaacAnalytics(clubId: string, academicYear?: string) {
+  const [club] = await db
+    .select({
+      id: clubs.id,
+      name: clubs.name,
+      slug: clubs.slug,
+      facultyCoordinatorId: clubs.facultyCoordinatorId,
+    })
+    .from(clubs)
+    .where(eq(clubs.id, clubId))
+    .limit(1);
+
+  if (!club) {
+    throw new AppError('NOT_FOUND', `Club '${clubId}' not found.`, 404);
+  }
+
+  // Determine Academic Year date range
+  let fromDate: Date | null = null;
+  let toDate: Date | null = null;
+
+  if (academicYear === '2024-25') {
+    fromDate = new Date('2024-07-01T00:00:00.000Z');
+    toDate = new Date('2025-06-30T23:59:59.999Z');
+  } else if (academicYear === '2025-26') {
+    fromDate = new Date('2025-07-01T00:00:00.000Z');
+    toDate = new Date('2026-06-30T23:59:59.999Z');
+  } else if (academicYear === '2026-27') {
+    fromDate = new Date('2026-07-01T00:00:00.000Z');
+    toDate = new Date('2027-06-30T23:59:59.999Z');
+  }
+
+  const params: any[] = [clubId];
+  let dateFilter = '';
+  if (fromDate && toDate) {
+    params.push(fromDate, toDate);
+    dateFilter = 'AND e.start_at >= $2 AND e.start_at <= $3';
+  }
+
+  const eventsRes = await pool.query(
+    `SELECT
+       e.id,
+       e.title,
+       e.slug,
+       e.category,
+       e.start_at AS "startAt",
+       e.end_at AS "endAt",
+       COUNT(DISTINCT r.id) FILTER (WHERE r.status IN ('CONFIRMED', 'NO_SHOW'))::int AS registered,
+       COUNT(DISTINCT t.id) FILTER (WHERE t.checked_in_at IS NOT NULL)::int AS attended,
+       COALESCE(AVG(rev.stars), 0)::float AS "avgEventRating",
+       COALESCE(AVG(rev.club_stars), 0)::float AS "avgClubRating"
+     FROM events e
+     LEFT JOIN registrations r ON e.id = r.event_id
+     LEFT JOIN tickets t ON r.id = t.registration_id
+     LEFT JOIN reviews rev ON e.id = rev.event_id AND rev.hidden_at IS NULL
+     WHERE e.club_id = $1 ${dateFilter}
+     GROUP BY e.id
+     ORDER BY e.start_at DESC`,
+    params
+  );
+
+  const eventRows = eventsRes.rows.map((row: any) => {
+    const reg = row.registered;
+    const att = row.attended;
+    const rate = reg > 0 ? Number(((att / reg) * 100).toFixed(1)) : 0;
+    return {
+      id: row.id,
+      title: row.title,
+      slug: row.slug,
+      category: row.category,
+      date: row.startAt ? row.startAt.toISOString() : null,
+      registered: reg,
+      attended: att,
+      attendanceRate: rate,
+      eventRating: Number(Number(row.avgEventRating).toFixed(1)),
+      clubRating: Number(Number(row.avgClubRating).toFixed(1)),
+    };
+  });
+
+  const eventsCount = eventRows.length;
+  const totalRegistered = eventRows.reduce((acc: number, e: any) => acc + e.registered, 0);
+  const totalAttended = eventRows.reduce((acc: number, e: any) => acc + e.attended, 0);
+  const overallAttendanceRate =
+    totalRegistered > 0 ? Number(((totalAttended / totalRegistered) * 100).toFixed(1)) : 0;
+
+  // Club-wide Ratings
+  const ratingsRes = await pool.query(
+    `SELECT
+       COALESCE(AVG(rev.stars), 0)::float AS "avgEventRating",
+       COALESCE(AVG(rev.club_stars), 0)::float AS "avgClubRating",
+       COUNT(rev.id)::int AS "reviewCount"
+     FROM reviews rev
+     JOIN events e ON rev.event_id = e.id
+     WHERE e.club_id = $1 AND rev.hidden_at IS NULL ${dateFilter}`,
+    params
+  );
+  const avgEventRating = Number(Number(ratingsRes.rows[0]?.avgEventRating || 0).toFixed(1));
+  const avgClubRating = Number(Number(ratingsRes.rows[0]?.avgClubRating || 0).toFixed(1));
+  const reviewCount = ratingsRes.rows[0]?.reviewCount || 0;
+
+  // Demographics with Privacy Rule (< 3 suppressed)
+  const demoRes = await pool.query(
+    `SELECT
+       COALESCE(u.department, 'General') AS department,
+       COUNT(DISTINCT r.id)::int AS count
+     FROM registrations r
+     JOIN events e ON r.event_id = e.id
+     JOIN users u ON r.user_id = u.id
+     WHERE e.club_id = $1 AND r.status IN ('CONFIRMED', 'NO_SHOW') ${dateFilter}
+     GROUP BY u.department
+     ORDER BY count DESC`,
+    params
+  );
+
+  let suppressedCount = 0;
+  const demoBuckets: Array<{ department: string; count: number | null; displayLabel: string }> = [];
+
+  for (const d of demoRes.rows) {
+    if (d.count >= 3) {
+      demoBuckets.push({
+        department: d.department,
+        count: d.count,
+        displayLabel: String(d.count),
+      });
+    } else {
+      suppressedCount += d.count;
+    }
+  }
+
+  if (suppressedCount > 0) {
+    demoBuckets.push({
+      department: 'Other Cohorts',
+      count: null,
+      displayLabel: `< 3 (${suppressedCount} total)`,
+    });
+  }
+
+  return {
+    club: {
+      id: club.id,
+      name: club.name,
+      slug: club.slug,
+    },
+    academicYear: academicYear || 'ALL',
+    eventsCount,
+    totalRegistered,
+    totalAttended,
+    overallAttendanceRate,
+    ratings: {
+      averageEventRating: avgEventRating,
+      averageClubRating: avgClubRating,
+      reviewCount,
+    },
+    demographics: {
+      buckets: demoBuckets,
+      suppressedCount,
+    },
+    events: eventRows,
+  };
+}

@@ -456,8 +456,8 @@ describe('Complete Registration, Form Builder & Attendee Management UI Suite', (
       });
 
       // Verify filters exist
-      expect(screen.getByText('All Departments')).toBeInTheDocument();
-      expect(screen.getByText('All Years')).toBeInTheDocument();
+      expect(screen.getAllByText('All Departments')[0]).toBeInTheDocument();
+      expect(screen.getAllByText('All Years')[0]).toBeInTheDocument();
       expect(screen.getByPlaceholderText(/Search name, roll, email/i)).toBeInTheDocument();
 
       // Click on attendee row to open deep inspection modal

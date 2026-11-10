@@ -94,6 +94,14 @@ export async function registerForEvent(
     }
 
     const now = new Date();
+    if (now > event.endAt) {
+      throw new AppError(
+        'VALIDATION_FAILED',
+        'Cannot register for an event that has already ended.',
+        400
+      );
+    }
+
     if (now < event.registrationOpensAt) {
       throw new AppError(
         'VALIDATION_FAILED',

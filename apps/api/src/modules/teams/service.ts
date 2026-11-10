@@ -88,6 +88,10 @@ export async function createTeam(
     }
 
     const now = new Date();
+    if (now > event.endAt) {
+      throw new AppError('CONFLICT', 'Cannot register for an event that has already ended.', 409);
+    }
+
     if (now < event.registrationOpensAt || now > event.registrationClosesAt) {
       throw new AppError('CONFLICT', 'Event registration is closed.', 409);
     }

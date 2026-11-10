@@ -45,20 +45,50 @@ export const reviews = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     stars: smallint('stars').notNull(),
-    comment: text('comment').notNull(),
+    comment: text('comment'),
+    clubStars: smallint('club_stars'),
+    clubComment: text('club_comment'),
     verified: boolean('verified').notNull().default(true),
     showName: boolean('show_name').notNull().default(false),
+    hiddenAt: timestamp('hidden_at', { withTimezone: true }),
+    hiddenBy: uuid('hidden_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     uniqueIndex('reviews_event_user_idx').on(table.eventId, table.userId),
     index('reviews_event_stars_idx').on(table.eventId, table.stars),
+    index('reviews_hidden_at_idx').on(table.hiddenAt),
+    index('reviews_club_stars_idx').on(table.clubStars),
     check('reviews_stars_check', sql`${table.stars} >= 1 AND ${table.stars} <= 5`),
+    check('reviews_club_stars_check', sql`${table.clubStars} IS NULL OR (${table.clubStars} >= 1 AND ${table.clubStars} <= 5)`),
   ]
 );
 
 export type Review = typeof reviews.$inferSelect;
 export type NewReview = typeof reviews.$inferInsert;
+
+export const reviewReports = pgTable(
+  'review_reports',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    reviewId: uuid('review_id')
+      .notNull()
+      .references(() => reviews.id, { onDelete: 'cascade' }),
+    reporterUserId: uuid('reporter_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    reason: text('reason').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('review_reports_review_reporter_unique').on(table.reviewId, table.reporterUserId),
+    index('review_reports_review_id_idx').on(table.reviewId),
+    index('review_reports_reporter_user_id_idx').on(table.reporterUserId),
+  ]
+);
+
+export type ReviewReport = typeof reviewReports.$inferSelect;
+export type NewReviewReport = typeof reviewReports.$inferInsert;
 
 export const odLetters = pgTable(
   'od_letters',

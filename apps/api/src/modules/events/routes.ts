@@ -1,8 +1,8 @@
-import { and, asc, desc, eq, gt, gte, inArray, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { DEFAULT_PROJECT_SUBMISSION_CONFIG, EventStatus, ProjectSubmissionConfig, UserRole } from '@eventora/shared';
 import { db } from '../../db/client';
-import { clubs, events, registrations, teams, tickets, users, venues, waitlistEntries, winners } from '../../db/schema';
+import { clubs, events, registrations, reviews, teams, tickets, users, venues, waitlistEntries, winners } from '../../db/schema';
 import { AppError } from '../../lib/app-error';
 import { requireClubRole, requireEventOrganizer } from '../../middleware/rbac';
 import { optionalAuth, requireAuth } from '../../plugins/auth';
@@ -10,6 +10,7 @@ import { emitSeats } from '../../realtime/io';
 import { ensureEventDoubtRoom, postEventCardToFeed } from '../channels/event-feed';
 import { getLiveWaitlistPosition } from '../waitlist/service';
 import { publicUrl } from '../../lib/r2';
+import { exportEventParticipants, getEventParticipants } from './participants';
 export interface AgendaSession {
   time: string;
   title: string;
@@ -310,17 +311,34 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
       to?: string;
       cursor?: string;
       limit?: string;
+      timeframe?: string;
     };
 
     const limit = Math.min(parseInt(query.limit || '20', 10), 100);
+    const timeframe = (query.timeframe || 'upcoming').toLowerCase();
+    const isDesc = timeframe === 'past' || timeframe === 'all';
+    const now = new Date();
 
-    // Public discovery only lists events students can actually act on:
-    // published/live, and not yet finished. Drafts, cancelled and ended events are hidden
-    // (they remain reachable by direct link and via the organizer/passport views).
-    const conditions = [
-      inArray(events.status, [EventStatus.PUBLISHED, EventStatus.LIVE]),
-      gt(events.endAt, new Date()),
-    ];
+    // Public discovery only lists events that are published, live, or completed (for past/all archive).
+    // Drafts and cancelled events are hidden.
+    const conditions = [];
+
+    if (timeframe === 'past') {
+      conditions.push(
+        inArray(events.status, [EventStatus.PUBLISHED, EventStatus.LIVE, EventStatus.COMPLETED]),
+        sql`(${events.endAt} <= ${now} OR ${events.status} = ${EventStatus.COMPLETED})`
+      );
+    } else if (timeframe === 'all') {
+      conditions.push(
+        inArray(events.status, [EventStatus.PUBLISHED, EventStatus.LIVE, EventStatus.COMPLETED])
+      );
+    } else {
+      // Default: upcoming (ongoing or future)
+      conditions.push(
+        inArray(events.status, [EventStatus.PUBLISHED, EventStatus.LIVE]),
+        gt(events.endAt, now)
+      );
+    }
 
     // The Discover page sends `search`; `q` is kept for existing callers.
     const searchText = query.q ?? query.search;
@@ -355,14 +373,25 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
     }
 
     // Keyset pagination: cursor is formatted as `${startAt.toISOString()}_${id}`
+    // For upcoming: ascending order (startAt, id) > (cursorTime, cursorId)
+    // For past/all: descending order (startAt, id) < (cursorTime, cursorId)
     if (query.cursor) {
       const [cursorTime, cursorId] = query.cursor.split('_');
       if (cursorTime && cursorId) {
-        conditions.push(
-          sql`(${events.startAt}, ${events.id}) > (${new Date(cursorTime)}, ${cursorId}::uuid)`
-        );
+        const cursorDate = new Date(cursorTime);
+        if (!isNaN(cursorDate.getTime())) {
+          conditions.push(
+            isDesc
+              ? sql`(${events.startAt}, ${events.id}) < (${cursorDate}, ${cursorId}::uuid)`
+              : sql`(${events.startAt}, ${events.id}) > (${cursorDate}, ${cursorId}::uuid)`
+          );
+        }
       }
     }
+
+    const orderBys = isDesc
+      ? [desc(events.startAt), desc(events.id)]
+      : [asc(events.startAt), asc(events.id)];
 
     const rows = await db
       .select({
@@ -395,7 +424,7 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
       .leftJoin(clubs, eq(events.clubId, clubs.id))
       .leftJoin(venues, eq(events.venueId, venues.id))
       .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(asc(events.startAt), asc(events.id))
+      .orderBy(...orderBys)
       .limit(limit + 1);
 
     const hasMore = rows.length > limit;
@@ -407,11 +436,40 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
         ? `${lastItem.startAt.toISOString()}_${lastItem.id}`
         : null;
 
-    const enrichedItems = items.map((ev) => ({
-      ...ev,
-      posterUrl: ev.posterKey ? publicUrl(ev.posterKey) : null,
-      seatLabel: computeSeatLabel(ev.remainingCapacity),
-    }));
+    // Fetch review ratings aggregates for the returned events
+    const eventIds = items.map((ev) => ev.id);
+    const ratingsMap = new Map<string, { averageRating: number; reviewCount: number }>();
+    if (eventIds.length > 0) {
+      const ratings = await db
+        .select({
+          eventId: reviews.eventId,
+          avgRating: sql<number>`round(avg(${reviews.stars})::numeric, 1)::float`,
+          reviewCount: sql<number>`count(${reviews.id})::int`,
+        })
+        .from(reviews)
+        .where(and(inArray(reviews.eventId, eventIds), isNull(reviews.hiddenAt)))
+        .groupBy(reviews.eventId);
+
+      for (const r of ratings) {
+        ratingsMap.set(r.eventId, {
+          averageRating: Number(r.avgRating),
+          reviewCount: Number(r.reviewCount),
+        });
+      }
+    }
+
+    const enrichedItems = items.map((ev) => {
+      const isPast = ev.endAt <= now || ev.status === EventStatus.COMPLETED;
+      const rating = ratingsMap.get(ev.id);
+      return {
+        ...ev,
+        isPast,
+        averageRating: rating ? rating.averageRating : null,
+        reviewCount: rating ? rating.reviewCount : 0,
+        posterUrl: ev.posterKey ? publicUrl(ev.posterKey) : null,
+        seatLabel: computeSeatLabel(ev.remainingCapacity),
+      };
+    });
     return reply.status(200).send({
       items: enrichedItems,
       nextCursor,
@@ -545,9 +603,66 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
         }
       }
 
+      const [reviewStats] = await db
+        .select({
+          avgRating: sql<number>`round(avg(${reviews.stars})::numeric, 1)::float`,
+          reviewCount: sql<number>`count(${reviews.id})::int`,
+        })
+        .from(reviews)
+        .where(and(eq(reviews.eventId, event.id), isNull(reviews.hiddenAt)));
+
+      const isPast = event.endAt <= new Date() || event.status === EventStatus.COMPLETED;
+
+      // Host Club Information with club rating & review count
+      let clubInfo: any = null;
+      if (event.clubId) {
+        const [clubRow] = await db
+          .select({
+            id: clubs.id,
+            name: clubs.name,
+            slug: clubs.slug,
+            description: clubs.description,
+            logoKey: clubs.logoKey,
+          })
+          .from(clubs)
+          .where(eq(clubs.id, event.clubId))
+          .limit(1);
+
+        if (clubRow) {
+          const [clubRatings] = await db
+            .select({
+              avgRating: sql<number>`round(avg(${reviews.clubStars})::numeric, 1)::float`,
+              reviewCount: sql<number>`count(${reviews.id})::int`,
+            })
+            .from(reviews)
+            .innerJoin(events, eq(reviews.eventId, events.id))
+            .where(
+              and(
+                eq(events.clubId, event.clubId),
+                sql`${reviews.clubStars} IS NOT NULL`,
+                isNull(reviews.hiddenAt)
+              )
+            );
+
+          clubInfo = {
+            id: clubRow.id,
+            name: clubRow.name,
+            slug: clubRow.slug,
+            description: clubRow.description,
+            logoUrl: clubRow.logoKey ? publicUrl(clubRow.logoKey) : null,
+            averageRating: clubRatings?.reviewCount ? Number(clubRatings.avgRating) : null,
+            reviewCount: Number(clubRatings?.reviewCount ?? 0),
+          };
+        }
+      }
+
       return reply.status(200).send({
         event: {
           ...event,
+          isPast,
+          club: clubInfo,
+          averageRating: reviewStats?.reviewCount ? Number(reviewStats.avgRating) : null,
+          reviewCount: Number(reviewStats?.reviewCount || 0),
           posterUrl: event.posterKey ? publicUrl(event.posterKey) : null,
           winners: eventWinners.map((w) => ({
             rank: w.rank,
@@ -562,6 +677,49 @@ export async function eventRoutes(server: FastifyInstance): Promise<void> {
           userRegistration,
         },
       });
+    }
+  );
+
+  // 12. GET /events/:eventId/participants (Organizer / Faculty Coordinator / Admin)
+  server.get(
+    '/events/:eventId/participants',
+    { preHandler: [requireAuth] },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { eventId } = request.params as { eventId: string };
+      const query = request.query as {
+        status?: 'registered' | 'attended' | 'no_show' | 'all';
+        q?: string;
+        department?: string;
+        year?: number | string;
+        page?: number;
+        limit?: number;
+      };
+
+      const result = await getEventParticipants(request.user!, eventId, query);
+      return reply.code(200).send(result);
+    }
+  );
+
+  // 13. GET /events/:eventId/participants/export (CSV & XLSX with UTF-8 BOM, formula defense, audit log)
+  server.get(
+    '/events/:eventId/participants/export',
+    { preHandler: [requireAuth] },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { eventId } = request.params as { eventId: string };
+      const query = request.query as {
+        format?: 'csv' | 'xlsx';
+        status?: 'registered' | 'attended' | 'no_show' | 'all';
+        q?: string;
+        department?: string;
+        year?: number | string;
+      };
+
+      const exportResult = await exportEventParticipants(request.user!, eventId, query);
+      return reply
+        .header('Content-Type', exportResult.contentType)
+        .header('Content-Disposition', `attachment; filename="${exportResult.filename}"`)
+        .code(200)
+        .send(exportResult.content);
     }
   );
 }
