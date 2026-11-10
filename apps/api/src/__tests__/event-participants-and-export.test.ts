@@ -55,6 +55,9 @@ describe('Area 3: Organiser Participants, Attendance, and Exports', () => {
       .returning();
     regularStudent = student;
 
+    const testRollFormula = `+9199${ts % 100000}`;
+    const testRollNoShow = `21CS${ts % 100000}`;
+
     // 4. Attended student (with formula test in name)
     const [stdAttended] = await db
       .insert(users)
@@ -62,7 +65,7 @@ describe('Area 3: Organiser Participants, Attendance, and Exports', () => {
         clerkId: `clerk_att_pt_${ts}`,
         email: `attended_pt_${ts}@campus.edu`,
         fullName: '=SUM(1+2)', // Formula injection probe
-        rollNumber: '+91999999', // Formula injection probe
+        rollNumber: testRollFormula, // Formula injection probe
         department: 'Computer Science',
         year: 3,
         role: UserRole.STUDENT,
@@ -77,7 +80,7 @@ describe('Area 3: Organiser Participants, Attendance, and Exports', () => {
         clerkId: `clerk_ns_pt_${ts}`,
         email: `noshow_pt_${ts}@campus.edu`,
         fullName: 'Absent Student',
-        rollNumber: '21CS099',
+        rollNumber: testRollNoShow,
         department: 'Electronics',
         year: 2,
         role: UserRole.STUDENT,
@@ -272,8 +275,8 @@ describe('Area 3: Organiser Participants, Attendance, and Exports', () => {
 
     // Check Formula Injection defense: '=SUM(1+2)' escaped to ''=SUM(1+2)'
     expect(rawBody).toContain(`'=SUM(1+2)`);
-    // Roll number '+91999999' escaped to ''+91999999'
-    expect(rawBody).toContain(`'+91999999`);
+    // Roll number '+9199...' escaped to ''+9199...'
+    expect(rawBody).toContain(`'+9199${ts % 100000}`);
 
     // Verify Audit log entry
     const [auditEntry] = await db

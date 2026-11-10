@@ -209,7 +209,9 @@ export const AppRoutes: React.FC = () => {
             element={
               <RequireAuth>
                 <RequireRole roles={['ORGANIZER', 'FACULTY', 'ADMIN']}>
-                  <AnalyticsPage />
+                  <ErrorBoundary>
+                    <AnalyticsPage />
+                  </ErrorBoundary>
                 </RequireRole>
               </RequireAuth>
             }
@@ -219,7 +221,9 @@ export const AppRoutes: React.FC = () => {
             element={
               <RequireAuth>
                 <RequireRole roles={['ORGANIZER', 'FACULTY', 'ADMIN']}>
-                  <AnalyticsPage />
+                  <ErrorBoundary>
+                    <AnalyticsPage />
+                  </ErrorBoundary>
                 </RequireRole>
               </RequireAuth>
             }

@@ -9,6 +9,7 @@ import { requireAuth } from '../../plugins/auth';
 import {
   generateNaacReport,
   getCampusAnalytics,
+  getClubNaacAnalytics,
   getClubTrends,
   getEventAnalytics,
   verifyAccreditationReport,
@@ -136,6 +137,67 @@ export async function analyticsRoutes(app: FastifyInstance): Promise<void> {
 
       const trends = await getClubTrends(clubId);
       return reply.code(200).send(trends);
+    }
+  );
+
+  // 2b. Club-wide NAAC Analytics Dashboard (Organizers, Faculty Coordinators, Admin)
+  app.get(
+    '/clubs/:clubId/analytics/naac',
+    {
+      preHandler: [requireAuth],
+      schema: {
+        params: z.object({
+          clubId: z.string().uuid(),
+        }),
+        querystring: z.object({
+          academicYear: z.string().optional(),
+        }),
+      },
+    },
+    async (request, reply) => {
+      const { clubId } = request.params as { clubId: string };
+      const { academicYear } = request.query as { academicYear?: string };
+      const user = request.user!;
+
+      // Permission check: Admin, Club Faculty Coordinator, or Club Organizer/Owner
+      if (user.role !== UserRole.ADMIN) {
+        const [club] = await db
+          .select({ facultyCoordinatorId: clubs.facultyCoordinatorId })
+          .from(clubs)
+          .where(eq(clubs.id, clubId))
+          .limit(1);
+
+        if (!club) {
+          throw new AppError('NOT_FOUND', `Club '${clubId}' not found.`, 404);
+        }
+
+        const isFacultyAdvisor = club.facultyCoordinatorId === user.id;
+        const [member] = await db
+          .select({ role: clubMembers.role })
+          .from(clubMembers)
+          .where(
+            and(
+              eq(clubMembers.clubId, clubId),
+              eq(clubMembers.userId, user.id),
+              inArray(clubMembers.role, [
+                ClubMemberRole.OWNER,
+                ClubMemberRole.ADMIN,
+              ])
+            )
+          )
+          .limit(1);
+
+        if (!isFacultyAdvisor && !member) {
+          throw new AppError(
+            'FORBIDDEN',
+            'Access to club NAAC analytics is restricted to club organizers and faculty advisors.',
+            403
+          );
+        }
+      }
+
+      const naacAnalytics = await getClubNaacAnalytics(clubId, academicYear);
+      return reply.code(200).send(naacAnalytics);
     }
   );
 
