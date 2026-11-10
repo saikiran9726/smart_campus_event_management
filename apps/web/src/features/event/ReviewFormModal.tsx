@@ -244,7 +244,7 @@ export const ReviewFormModal: React.FC<ReviewFormModalProps> = ({
               <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={isSubmitting}>
                 Cancel
               </Button>
-              <Button type="submit" size="sm" disabled={isSubmitting || isDeleting}>
+              <Button type="submit" size="sm" disabled={isSubmitting || isDeleting} data-testid="submit-review-button">
                 {isSubmitting ? 'Submitting...' : existingReview ? 'Save Changes' : 'Submit Review'}
               </Button>
             </div>
